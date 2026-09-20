@@ -1,3 +1,7 @@
+# Fixed project name: without it compose names the container, network, and volume after the
+# checkout directory, so a git worktree would get a second, empty database of its own.
+name: fineprint
+
 services:
   db:
     image: pgvector/pgvector:pg16
