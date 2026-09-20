@@ -1,0 +1,257 @@
+{
+  "run_id": "20260921T031500Z_hybrid",
+  "created_at": "2026-09-21T03:15:00Z",
+  "git": {
+    "commit": "1f4e9c2a77b3d5e8091a4c6b2d8f0e3a5c7b9d11",
+    "dirty": false
+  },
+  "config": {
+    "name": "hybrid",
+    "mode": "hybrid",
+    "chunk_set": "fixed-220w",
+    "top_k": 5,
+    "candidates": 20,
+    "rrf_k": 60,
+    "embedding_model": "amazon.titan-embed-text-v2:0",
+    "llm_model": "us.anthropic.claude-opus-5"
+  },
+  "corpus": {
+    "edition": 2026,
+    "sha256": "d7a341bc3d2d3dab59af746a0875752761e6c2f2dc107d95e9078a23933513d6"
+  },
+  "golden_set": {
+    "sha256": "aa11bb22cc33dd44ee55ff6677889900aabbccddeeff00112233445566778899",
+    "count": 4
+  },
+  "questions": [
+    {
+      "id": "q001",
+      "question": "How much will her Part B premium be each month in 2026?",
+      "type": "lookup",
+      "category": "costs",
+      "difficulty": "easy",
+      "answerable": true,
+      "expected_pages": [23],
+      "retrieved": [
+        {
+          "chunk_id": 141,
+          "page_start": 22,
+          "page_end": 23,
+          "rank": 1,
+          "score": 0.0328,
+          "lexical_rank": 1,
+          "vector_rank": 2
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "cited_page_hit": 1.0,
+        "abstention_correct": 1.0
+      },
+      "answer": {
+        "question": "How much will her Part B premium be each month in 2026?",
+        "answer": "The standard Part B premium in 2026 is $202.90 a month.",
+        "found_in_handbook": true,
+        "citations": [
+          {
+            "chunk_id": 141,
+            "page_start": 22,
+            "page_end": 23,
+            "quote": "The standard Part B premium amount in 2026 is $202.90.",
+            "quote_verified": true
+          }
+        ],
+        "dropped_citations": 0,
+        "confidence": "high",
+        "retrieved_chunk_ids": [141],
+        "model": "us.anthropic.claude-opus-5",
+        "input_tokens": 1820,
+        "output_tokens": 96,
+        "latency_ms": 4210.0
+      },
+      "review": {
+        "verdict": "pass",
+        "note": "right amount, right page",
+        "reviewer": "saint",
+        "reviewed_at": "2026-09-21T04:02:11Z"
+      },
+      "error": null
+    },
+    {
+      "id": "q002",
+      "question": "What will 5 hospital days and 30 skilled nursing facility days cost in 2026?",
+      "type": "multi_section",
+      "category": "costs",
+      "difficulty": "hard",
+      "answerable": true,
+      "expected_pages": [27, 29],
+      "retrieved": [
+        {
+          "chunk_id": 158,
+          "page_start": 30,
+          "page_end": 31,
+          "rank": 1,
+          "score": 0.0312,
+          "lexical_rank": 2,
+          "vector_rank": 1
+        },
+        {
+          "chunk_id": 152,
+          "page_start": 26,
+          "page_end": 27,
+          "rank": 2,
+          "score": 0.0301,
+          "lexical_rank": 1,
+          "vector_rank": 8
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 0.5,
+        "reciprocal_rank": 0.5,
+        "cited_page_hit": 0.0,
+        "abstention_correct": 1.0
+      },
+      "answer": {
+        "question": "What will 5 hospital days and 30 skilled nursing facility days cost in 2026?",
+        "answer": "You pay the $1,736 Part A deductible for the benefit period.",
+        "found_in_handbook": true,
+        "citations": [
+          {
+            "chunk_id": 158,
+            "page_start": 30,
+            "page_end": 31,
+            "quote": "you pay a deductible",
+            "quote_verified": false
+          }
+        ],
+        "dropped_citations": 0,
+        "confidence": "medium",
+        "retrieved_chunk_ids": [158, 152],
+        "model": "us.anthropic.claude-opus-5",
+        "input_tokens": 2044,
+        "output_tokens": 121,
+        "latency_ms": 5180.0
+      },
+      "review": {
+        "verdict": "fail",
+        "note": "missed the skilled nursing facility daily rate",
+        "reviewer": "saint",
+        "reviewed_at": "2026-09-21T04:04:52Z"
+      },
+      "error": null
+    },
+    {
+      "id": "q003",
+      "question": "What are the 2026 income and resource limits for Extra Help?",
+      "type": "unanswerable",
+      "category": "costs",
+      "difficulty": "medium",
+      "answerable": false,
+      "expected_pages": [],
+      "retrieved": [
+        {
+          "chunk_id": 401,
+          "page_start": 92,
+          "page_end": 92,
+          "rank": 1,
+          "score": 0.0295,
+          "lexical_rank": 1,
+          "vector_rank": 1
+        }
+      ],
+      "metrics": {
+        "page_hit": null,
+        "page_recall": null,
+        "reciprocal_rank": null,
+        "cited_page_hit": null,
+        "abstention_correct": 1.0
+      },
+      "answer": {
+        "question": "What are the 2026 income and resource limits for Extra Help?",
+        "answer": "The handbook does not give the 2026 limits; it points to Medicare.gov.",
+        "found_in_handbook": false,
+        "citations": [
+          {
+            "chunk_id": 401,
+            "page_start": 92,
+            "page_end": 92,
+            "quote": "You can find 2026 income and resource limits on Medicare.gov.",
+            "quote_verified": true
+          }
+        ],
+        "dropped_citations": 0,
+        "confidence": "high",
+        "retrieved_chunk_ids": [401],
+        "model": "us.anthropic.claude-opus-5",
+        "input_tokens": 1755,
+        "output_tokens": 88,
+        "latency_ms": 3890.0
+      },
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q005",
+      "question": "What does the comparison table say about seeing a specialist?",
+      "type": "table",
+      "category": "original_vs_advantage",
+      "difficulty": "medium",
+      "answerable": true,
+      "expected_pages": [42],
+      "retrieved": [
+        {
+          "chunk_id": 233,
+          "page_start": 60,
+          "page_end": 61,
+          "rank": 1,
+          "score": 0.0288,
+          "lexical_rank": 3,
+          "vector_rank": 1
+        }
+      ],
+      "metrics": {
+        "page_hit": 0.0,
+        "page_recall": 0.0,
+        "reciprocal_rank": 0.0,
+        "cited_page_hit": 0.0,
+        "abstention_correct": 1.0
+      },
+      "answer": {
+        "question": "What does the comparison table say about seeing a specialist?",
+        "answer": "Medicare Advantage Plans may require a referral to see a specialist.",
+        "found_in_handbook": true,
+        "citations": [
+          {
+            "chunk_id": 233,
+            "page_start": 60,
+            "page_end": 61,
+            "quote": "you may need a referral",
+            "quote_verified": true
+          }
+        ],
+        "dropped_citations": 1,
+        "confidence": "low",
+        "retrieved_chunk_ids": [233],
+        "model": "us.anthropic.claude-opus-5",
+        "input_tokens": 1901,
+        "output_tokens": 74,
+        "latency_ms": 4402.0
+      },
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    }
+  ]
+}
