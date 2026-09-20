@@ -10,7 +10,7 @@ when we reach that part, not before. The rules that apply to every part are in `
 
 ## Done for every part
 
-Every part carries these five items in addition to its own definition of done. Part 5 is optional;
+Every part carries these six items in addition to its own definition of done. Part 5 is optional;
 if it is built, it carries them too.
 
 - [ ] Its build spec is written **first**, in `docs/parts/NN-name.md`, detailed enough that a
@@ -33,8 +33,8 @@ questions a Medicare beneficiary would ask, each with expected answer and expect
 A CLI that runs the golden set and prints the scoreboard, even if the metrics in part 1 are just
 exact-page-hit rate and a manual pass/fail column.
 
-Build spec: [parts/01-rag-service.md](parts/01-rag-service.md). It carries twelve ordered tasks
-with acceptance criteria, the data model, the golden-set schema, the eval design, and what the
+Build spec: [parts/01-rag-service.md](parts/01-rag-service.md). It carries thirteen ordered tasks
+(Task 0 to Task 12) with acceptance criteria, the data model, the golden-set schema, the eval design, and what the
 video must show. It also carries a "Decisions waiting for the owner" table that must be resolved
 before the tasks it blocks. One of those decisions, D3, concerns the phrase "BM25 via Postgres
 full-text search" above — see "Findings from setup that affect the plan".
