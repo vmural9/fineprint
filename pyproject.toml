@@ -31,6 +31,11 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
+[tool.ruff.lint.isort]
+# Both packages are ours. Naming them keeps import blocks sorted the same way whether or not a
+# module exists yet, which matters for the modules that are imported inside a function.
+known-first-party = ["fineprint", "evals"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
