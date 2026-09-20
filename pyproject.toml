@@ -5,6 +5,10 @@ description = "A RAG service that answers Medicare questions from the official \
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "pgvector>=0.5.0",
+    "psycopg[binary,pool]>=3.3.6",
+    "pydantic>=2.13.5",
+    "pydantic-settings>=2.15.0",
     "pypdf>=6.19.0",
 ]
 
@@ -25,3 +29,6 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "integration: needs a running Postgres; skips with a reason when DATABASE_URL is unreachable",
+]
