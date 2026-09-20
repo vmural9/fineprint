@@ -103,7 +103,7 @@ question ─┬─▶ embed ─────▶ vector top N ──┐
 Everything is plain Python and plain SQL. There is no ORM and no RAG framework, so a reader can
 see each step.
 
-| Module (`src/medicare_qa/`) | Responsibility |
+| Module (`src/fineprint/`) | Responsibility |
 |-----------------------------|----------------|
 | `config.py` | `Settings` (pydantic-settings), loaded from the environment and `.env` |
 | `db.py` | psycopg 3 connection pool, pgvector type registration, `init_db()` that applies `schema.sql` |
@@ -116,7 +116,7 @@ see each step.
 | `retrieval.py` | `search_lexical`, `search_vector`, `rrf_fuse`, `hybrid_search` |
 | `answer.py` | Prompt assembly, the response models, citation validation, `answer_question()` |
 | `api.py` | The FastAPI app |
-| `cli.py` | `medicare-qa` command: `init-db`, `ingest`, `search`, `ask`, `serve` (argparse) |
+| `cli.py` | `fineprint` command: `init-db`, `ingest`, `search`, `ask`, `serve` (argparse) |
 
 | Module (`evals/`) | Responsibility |
 |-------------------|----------------|
@@ -133,7 +133,7 @@ adds the rows that are not yet in `.env.example`.
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `DATABASE_URL` | `postgresql://medicare:medicare@localhost:5432/medicare_qa` | Matches `docker-compose.yml` |
+| `DATABASE_URL` | `postgresql://fineprint:fineprint@localhost:5432/fineprint` | Matches `docker-compose.yml` |
 | `CORPUS_EDITION` | `2026` | Which handbook edition queries run against. Part 4 loads a second edition next to it. |
 | `CHUNK_SET` | `fixed-220w` | Which set of chunks queries run against. Part 2 adds more sets side by side. |
 | `LLM_PROVIDER` / `LLM_MODEL` | `anthropic` / `claude-opus-5` | D1 |
@@ -145,7 +145,7 @@ adds the rows that are not yet in `.env.example`.
 
 ## Data model
 
-`schema.sql`, applied by `medicare-qa init-db`. Every statement is `IF NOT EXISTS`, so running it
+`schema.sql`, applied by `fineprint init-db`. Every statement is `IF NOT EXISTS`, so running it
 twice is safe.
 
 ```sql
@@ -212,13 +212,13 @@ task 4. Tests that need Postgres carry the `integration` marker and skip with a 
 ### Task 1: Settings, database plumbing, schema
 
 Add `pydantic`, `pydantic-settings`, `psycopg[binary,pool]`, and `pgvector`. Write `config.py`,
-`db.py`, `schema.sql`, and the `init-db` subcommand (register the `medicare-qa` console script in
+`db.py`, `schema.sql`, and the `init-db` subcommand (register the `fineprint` console script in
 `pyproject.toml`). Complete `.env.example` from the configuration table. Register the console script
-as `medicare-qa = "medicare_qa.cli:main"` and register the `integration` pytest marker in
+as `fineprint = "fineprint.cli:main"` and register the `integration` pytest marker in
 `pyproject.toml`. `schema.sql` lives inside the package and is read with `importlib.resources`;
 check that the built package includes it.
 
-Accept when: `medicare-qa init-db` works on an empty database and again on an initialized one; an
+Accept when: `fineprint init-db` works on an empty database and again on an initialized one; an
 integration test creates the schema and round-trips one row with a 384-dimension vector; settings
 load from the environment with the documented defaults; no secret has a default value.
 
@@ -295,7 +295,7 @@ Commit: `feat(providers): add chat and embedding protocols with local embedder`
 
 ### Task 5: Ingest command
 
-`medicare-qa ingest [--edition 2026] [--chunk-set fixed-220w]` verifies the PDF hash against the
+`fineprint ingest [--edition 2026] [--chunk-set fixed-220w]` verifies the PDF hash against the
 pinned value, extracts pages, chunks, embeds in batches, and writes `documents`, `pages`, and
 `chunks` in one transaction. Re-running replaces that document's rows for that chunk set. It prints
 the page count, chunk count, and the minimum, median, and maximum chunk length in words, and refuses
@@ -303,7 +303,7 @@ to run on a dimension mismatch.
 
 The table of pinned editions (year, file name, sha256, source URLs) must live in one place that both
 the package and the script can import. Move `EDITIONS` from `scripts/download_handbook.py` into
-`src/medicare_qa/editions.py` and have the script import it. `documents.source_url` is the edition's
+`src/fineprint/editions.py` and have the script import it. `documents.source_url` is the edition's
 primary URL from that table.
 
 Accept when: an integration test ingests a three-page fixture with the fake embedder, and a second
@@ -350,7 +350,7 @@ Accept when: unit tests for `rrf_fuse` cover a chunk found by both retrievers ou
 found by one, tie-breaking, and an empty ranking; integration tests show that a full question
 returns lexical hits, that questions containing an apostrophe, a dollar sign, a colon, and a
 hyphenated phone number do not raise, and that a stop-word-only question returns an empty list;
-`medicare-qa search "<question>" --mode hybrid` prints ranks, pages, both source ranks, and the
+`fineprint search "<question>" --mode hybrid` prints ranks, pages, both source ranks, and the
 first 100 characters of each chunk.
 
 Commit: `feat(retrieval): add lexical, vector, and RRF hybrid search`
@@ -414,7 +414,7 @@ partial. Present each excerpt to the model as `<chunk id="123" pages="45-46">…
 Accept when unit tests with the fake chat model show: a citation naming a chunk that was not
 retrieved is dropped and counted; page numbers come from the retrieved rows; `quote_verified` is
 right for a matching quote, a quote that differs only in whitespace, and an invented quote; the
-prompt contains every retrieved chunk once, in ranked order. One manual run of `medicare-qa ask`
+prompt contains every retrieved chunk once, in ranked order. One manual run of `fineprint ask`
 on an answerable and an unanswerable question is pasted into the commit body.
 
 Commit: `feat(answer): generate structured, cited answers`
@@ -430,7 +430,7 @@ pool and loads the embedder once in the lifespan handler.
 - `GET /healthz` checks the database connection.
 
 Validate inputs (non-empty text, `top_k` between 1 and 20). A provider failure returns 502 with a
-short message and no stack trace. `medicare-qa serve` runs uvicorn.
+short message and no stack trace. `fineprint serve` runs uvicorn.
 
 Accept when: test-client tests, using dependency overrides for the embedder and chat model, cover
 a success and a validation error for each endpoint and the 502 path; `/docs` renders the schemas.
@@ -565,7 +565,7 @@ Seven to ten minutes, in this order.
    part 1 fills the first columns.
 2. The corpus: the handbook, why it is a good test (tables, page cross-references, a new edition
    every year), and the download script with its pinned hash.
-3. Ingestion, live: run `medicare-qa ingest`, then look at one chunk row in `psql` with its pages,
+3. Ingestion, live: run `fineprint ingest`, then look at one chunk row in `psql` with its pages,
    `tsv`, and embedding.
 4. Hybrid retrieval: `/search` in all three modes on two questions taken from the eval results,
    one that lexical finds and vector misses and one the other way round, then the RRF ranks that

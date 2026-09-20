@@ -1,5 +1,5 @@
 [project]
-name = "medicare-qa"
+name = "fineprint"
 version = "0.1.0"
 description = "A RAG service that answers Medicare questions from the official \"Medicare & You 2026\" handbook, with cited page numbers."
 readme = "README.md"

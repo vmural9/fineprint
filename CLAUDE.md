@@ -30,6 +30,13 @@ One product, five parts. `docs/PLAN.md` holds the full plan and a definition of 
 not before. Build it. Add its README section. Regenerate the scoreboard. Tag `part-N`. Then write
 the video script in `docs/scripts/NN-name.md` — after the part is built, never before.
 
+**Issue tracking.** Work is tracked in GitHub issues at https://github.com/vmural9/fineprint: one
+parent issue per part and one child issue per task of the current part. Reference the issue in
+commits (`Refs #N`) and close it with `Closes #N`.
+
+**AWS.** If a part needs AWS, use the `merlion-brands` profile, and create resources only through
+a stack whose name starts with `fineprint-`. The account is shared with other projects.
+
 ## Current status (2026-09-21)
 
 Setup is done: the uv project, the docker compose Postgres, `scripts/download_handbook.py`, and the
@@ -64,7 +71,7 @@ These are not style preferences. Breaking one invalidates what the project claim
    `.env.example` is committed with no real values. No secret has a default in code.
 4. **Keep the code plain and readable.** Hiring managers read this repo. Prefer clarity over
    cleverness, and prefer the standard library or a well-known package over a framework that hides
-   what is happening. No LangChain and no LlamaIndex in `src/medicare_qa/` unless a part's spec
+   what is happening. No LangChain and no LlamaIndex in `src/fineprint/` unless a part's spec
    calls for one by name.
 5. **One LLM provider behind a thin abstraction until part 3.** Retries, fallback, and any second
    provider are part 3 work, not part 1 work.
@@ -104,7 +111,7 @@ docs/parts/NN-name.md         build spec for one part, written when we reach it
 docs/scripts/NN-name.md       video script, written after the part is built
 evals/                        golden set, eval runners, scoreboard generator
 scripts/download_handbook.py  pinned, hash-verified handbook download
-src/medicare_qa/              application code — empty; part 1 fills it
+src/fineprint/                application code — empty; part 1 fills it
 tests/
 data/                         the handbook PDF lands here; gitignored
 docker-compose.yml  pyproject.toml  .env.example
@@ -122,5 +129,5 @@ uv run python -m evals.verify_golden_set     # check golden-set evidence quotes 
 ```
 
 `uv run python scripts/download_handbook.py --edition 2025` fetches the 2025 handbook, which part 4
-needs. The service commands (`medicare-qa init-db`, `ingest`, `search`, `ask`, `serve`) do not
+needs. The service commands (`fineprint init-db`, `ingest`, `search`, `ask`, `serve`) do not
 exist yet — part 1 creates them.

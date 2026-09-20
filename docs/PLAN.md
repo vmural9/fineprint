@@ -194,7 +194,7 @@ install unconditionally, along with `openai`, `instructor`, `datasets`, `tiktoke
 `scikit-network` and `pillow`. `CLAUDE.md` bans LangChain from application code unless a part calls
 for it, and part 2 does not: it calls for RAGAS. So the part 2 spec must (a) put `ragas` in a
 dev/eval dependency group rather than in the project's runtime dependencies, (b) forbid any import
-of a LangChain package from `src/medicare_qa/`, so the ban holds where it matters, and (c) decide
+of a LangChain package from `src/fineprint/`, so the ban holds where it matters, and (c) decide
 which model computes the RAGAS metrics and how it is wired, because the hard dependency on
 `langchain_openai` and `openai` means RAGAS's defaults are OpenAI-shaped while decision D1 proposes
 Anthropic for generation. That last point needs an answer before part 2 starts, not during it.
