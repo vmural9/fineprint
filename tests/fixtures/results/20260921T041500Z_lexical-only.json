@@ -1,0 +1,168 @@
+{
+  "run_id": "20260921T041500Z_lexical-only",
+  "created_at": "2026-09-21T04:15:00Z",
+  "git": {
+    "commit": "1f4e9c2a77b3d5e8091a4c6b2d8f0e3a5c7b9d11",
+    "dirty": true
+  },
+  "config": {
+    "name": "lexical-only",
+    "mode": "lexical",
+    "chunk_set": "fixed-220w",
+    "top_k": 5,
+    "candidates": 20,
+    "rrf_k": 60,
+    "embedding_model": "amazon.titan-embed-text-v2:0",
+    "llm_model": null
+  },
+  "corpus": {
+    "edition": 2026,
+    "sha256": "d7a341bc3d2d3dab59af746a0875752761e6c2f2dc107d95e9078a23933513d6"
+  },
+  "golden_set": {
+    "sha256": "aa11bb22cc33dd44ee55ff6677889900aabbccddeeff00112233445566778899",
+    "count": 4
+  },
+  "questions": [
+    {
+      "id": "q001",
+      "question": "How much will her Part B premium be each month in 2026?",
+      "type": "lookup",
+      "category": "costs",
+      "difficulty": "easy",
+      "answerable": true,
+      "expected_pages": [23],
+      "retrieved": [
+        {
+          "chunk_id": 141,
+          "page_start": 22,
+          "page_end": 23,
+          "rank": 1,
+          "score": 0.0912,
+          "lexical_rank": 1,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q002",
+      "question": "What will 5 hospital days and 30 skilled nursing facility days cost in 2026?",
+      "type": "multi_section",
+      "category": "costs",
+      "difficulty": "hard",
+      "answerable": true,
+      "expected_pages": [27, 29],
+      "retrieved": [
+        {
+          "chunk_id": 310,
+          "page_start": 70,
+          "page_end": 71,
+          "rank": 1,
+          "score": 0.0611,
+          "lexical_rank": 1,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 0.0,
+        "page_recall": 0.0,
+        "reciprocal_rank": 0.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q003",
+      "question": "What are the 2026 income and resource limits for Extra Help?",
+      "type": "unanswerable",
+      "category": "costs",
+      "difficulty": "medium",
+      "answerable": false,
+      "expected_pages": [],
+      "retrieved": [
+        {
+          "chunk_id": 401,
+          "page_start": 92,
+          "page_end": 92,
+          "rank": 1,
+          "score": 0.0730,
+          "lexical_rank": 1,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": null,
+        "page_recall": null,
+        "reciprocal_rank": null,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q005",
+      "question": "What does the comparison table say about seeing a specialist?",
+      "type": "table",
+      "category": "original_vs_advantage",
+      "difficulty": "medium",
+      "answerable": true,
+      "expected_pages": [42],
+      "retrieved": [
+        {
+          "chunk_id": 199,
+          "page_start": 41,
+          "page_end": 42,
+          "rank": 3,
+          "score": 0.0402,
+          "lexical_rank": 3,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 0.3333333333333333,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    }
+  ]
+}
