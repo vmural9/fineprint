@@ -5,8 +5,9 @@ It is written so that a session with no other context can build part 1 from it. 
 first; its rules apply to every task below.
 
 - **Tag at the end of this part:** `part-1`
-- **Status:** not started. The setup session (2026-09-21) created the repo skeleton, the handbook
-  download script, and the first 15 golden-set questions.
+- **Status:** under way. The setup session (2026-09-21) created the repo skeleton, the handbook
+  download script, and the first 15 golden-set questions. The decisions below were settled the same
+  day, and Task 1 is being built.
 
 ## What part 1 delivers
 
@@ -75,21 +76,42 @@ Established by the setup session from the PDF itself, not from memory. Re-check 
   in three at one point. The script's fallback URL covered it. CI in part 4 should cache the file
   and retry once before treating a failed download as a failure.
 
-## Decisions waiting for the owner
+## Decisions, settled 2026-09-21
 
-The setup session proposed these defaults. Do not start the task named in the last column until
-the owner has confirmed or changed the decision. Record the outcome by editing this table.
+All eight are decided. The owner chose AWS Bedrock for model access and delegated the remaining
+technical calls to the build lead, who confirmed the proposed defaults. No task in this spec is
+waiting on a decision. The facts behind D1 and D2 were checked with live calls the same day and are
+recorded under "Provider facts verified on 2026-09-21", below.
 
-| # | Decision | Proposed default | If the owner chooses differently | Blocks |
-|---|----------|------------------|----------------------------------|--------|
-| D1 | Generation provider and model | Anthropic, `claude-opus-5`, set by config | Swap one provider module and two config defaults | Task 7 |
-| D2 | Embeddings. Anthropic has no embeddings endpoint, so "one provider" cannot cover both calls. | Local model `BAAI/bge-small-en-v1.5` (384 dimensions) run through `fastembed`. Retrieval, ingestion, and every retrieval-only eval then work with no API key and no cost. `fastembed` runs the model with onnxruntime and downloads the weights from Hugging Face on first use, so CI must cache them. | Voyage AI or OpenAI embeddings: one more key, a different vector dimension in `schema.sql`, nothing else | Task 4 |
-| D3 | The brief says "BM25 via Postgres full-text search". Built-in Postgres ranking (`ts_rank_cd`) is not BM25; real BM25 needs an extension that the `pgvector/pgvector:pg16` image does not ship. | Use built-in full-text search in part 1 and call it "lexical (Postgres FTS)" everywhere. Make true BM25 one of the side-by-side experiments in part 2. | Switch the database image to one that bundles a BM25 extension and pgvector | Task 6 |
-| D4 | Vector index | None in part 1. The corpus is a few hundred chunks, so an exact scan is fast and keeps evals deterministic. The HNSW statement stays in `schema.sql` as a comment with the reason. | Create the index, and set `hnsw.iterative_scan` because every query filters by chunk set | Task 1 |
-| D5 | Golden-set fields beyond the brief's six plus `needs_review` | `type`, `evidence`, `alt_pages` (see "Golden set") | Drop the field from the file, the loader, and the verifier | Task 9 |
-| D6 | Answer schema carries `found_in_handbook` in addition to answer, citations, confidence | Included, so abstention on unanswerable questions is measured without a judge | Remove the field and the abstention metric | Task 7 |
-| D7 | Headline scoreboard columns for the whole series | The eleven columns under "Scoreboard format" | Edit the column list in `evals/scoreboard.py`; old results still render | Task 10 |
-| D8 | Corpus edition. The brief pins 2026, and CMS has since published 2027. | Stay on 2026 as briefed; part 4 swaps 2025 for 2026 as planned. | Pin the 2027 file in the download script, re-verify the golden set against it, and make the part 4 swap 2026 to 2027 | Task 5, Task 9 |
+| # | Decision | Outcome | What it means for the build |
+|---|----------|---------|------------------------------|
+| D1 | Generation provider and model | **AWS Bedrock.** Answers come from Claude Opus 5, model ID `us.anthropic.claude-opus-5`, in region `us-west-2`, called with the `anthropic` Python SDK's `AnthropicBedrock` client. Credentials come from the standard AWS credential chain; locally that means `AWS_PROFILE` in `.env`. | Task 7. No Anthropic API key is involved. `LLM_PROVIDER` / `LLM_MODEL` default to `bedrock` / `us.anthropic.claude-opus-5`. |
+| D2 | Embeddings | **Also Bedrock**, so one provider and one set of credentials cover both model calls, as the brief wanted. Model `amazon.titan-embed-text-v2:0`, 1024 dimensions, normalized, called through boto3's `bedrock-runtime` `invoke_model`. | Task 4. The `chunks.embedding` column is `vector(1024)`. Retrieval is no longer free or offline: embedding a question is a Bedrock call. A local embedding model becomes a candidate experiment for part 2. |
+| D3 | The brief says "BM25 via Postgres full-text search". Built-in Postgres ranking (`ts_rank_cd`) is not BM25; real BM25 needs an extension that the `pgvector/pgvector:pg16` image does not ship. | **As proposed.** Part 1 uses built-in Postgres full-text search and calls it "lexical (Postgres FTS)" everywhere rather than claiming BM25. | Task 6. True BM25 becomes one of part 2's side-by-side experiments, which needs a database image that ships a BM25 extension. |
+| D4 | Vector index | **As proposed: none in part 1.** The corpus is a few hundred chunks, so an exact scan is fast and keeps evals deterministic. | Task 1. The HNSW statement stays in `schema.sql` as a comment with the reason, for whoever grows the table. |
+| D5 | Golden-set fields beyond the brief's six plus `needs_review` | **As proposed: kept.** `type`, `evidence`, and `alt_pages` all stay (see "Golden set"). | Task 9. The scoreboard detail can break results down by question type, and "verified pages" stays a reproducible claim. |
+| D6 | Answer schema carries `found_in_handbook` in addition to answer, citations, confidence | **As proposed: kept.** | Task 7. Abstention on unanswerable questions is measured without a judge. |
+| D7 | Headline scoreboard columns for the whole series | **As proposed: kept.** The eleven columns under "Scoreboard format" stand. | Task 10. The same table closes every video with more cells filled in. |
+| D8 | Corpus edition. The brief pins 2026, and CMS has since published 2027. | **As proposed: stay on 2026.** | Tasks 5 and 9. Part 4 still swaps 2025 for 2026, which is the demo the two disagreeing printings make worth running. |
+
+### Provider facts verified on 2026-09-21
+
+Checked with live calls against Bedrock in `us-west-2`, not recalled. Tasks 4 and 7 depend on them;
+re-check before changing any of them.
+
+- **Use the standard runtime endpoint, `AnthropicBedrock`.** The SDK also offers a newer Bedrock
+  endpoint through `AnthropicBedrockMantle`. In `us-west-2` that endpoint serves Claude Haiku 4.5
+  but returns 404 for Opus 5 and Sonnet 5, so this project uses the standard one.
+- **Use an inference profile ID, not the bare model ID.** An inference profile is an ID that routes
+  a request across a group of regions. On the standard endpoint the bare `anthropic.claude-opus-5`
+  is refused — "on-demand throughput isn't supported" — while the `us.` and `global.` profile IDs
+  work. The project uses `us.anthropic.claude-opus-5`.
+- **The API's built-in structured output is not available on this path.**
+  `client.messages.parse(..., output_format=...)` fails with 400 `output_config.format: Extra inputs
+  are not permitted`. Task 7 therefore gets its validated `DraftAnswer` another way; see Task 7.
+- **Titan returns 1024 numbers.** `amazon.titan-embed-text-v2:0`, called through boto3's
+  `bedrock-runtime` `invoke_model`, returned a 1024-dimension vector. That is why the schema says
+  `vector(1024)`.
 
 ## Architecture
 
@@ -111,7 +133,7 @@ see each step.
 | `pdf.py` | `extract_pages(path) -> list[Page]` |
 | `chunking.py` | `Chunk` dataclass, the fixed-size chunker, a registry of chunkers by name |
 | `providers/base.py` | `ChatModel` and `Embedder` protocols, `LLMResult` |
-| `providers/anthropic_chat.py`, `providers/local_embedder.py`, `providers/factory.py` | The one default implementation of each protocol, chosen by config |
+| `providers/bedrock_chat.py`, `providers/bedrock_embedder.py`, `providers/factory.py` | The one default implementation of each protocol, chosen by config |
 | `ingest.py` | Wires extract, chunk, embed, and store; idempotent per chunk set |
 | `retrieval.py` | `search_lexical`, `search_vector`, `rrf_fuse`, `hybrid_search` |
 | `answer.py` | Prompt assembly, the response models, citation validation, `answer_question()` |
@@ -136,9 +158,10 @@ adds the rows that are not yet in `.env.example`.
 | `DATABASE_URL` | `postgresql://fineprint:fineprint@localhost:5432/fineprint` | Matches `docker-compose.yml` |
 | `CORPUS_EDITION` | `2026` | Which handbook edition queries run against. Part 4 loads a second edition next to it. |
 | `CHUNK_SET` | `fixed-220w` | Which set of chunks queries run against. Part 2 adds more sets side by side. |
-| `LLM_PROVIDER` / `LLM_MODEL` | `anthropic` / `claude-opus-5` | D1 |
-| `ANTHROPIC_API_KEY` | none | Secret. Only `/ask` and answer evals need it. |
-| `EMBEDDING_PROVIDER` / `EMBEDDING_MODEL` | `fastembed` / `BAAI/bge-small-en-v1.5` | D2 |
+| `LLM_PROVIDER` / `LLM_MODEL` | `bedrock` / `us.anthropic.claude-opus-5` | D1 |
+| `EMBEDDING_PROVIDER` / `EMBEDDING_MODEL` | `bedrock` / `amazon.titan-embed-text-v2:0` | D2 |
+| `AWS_PROFILE` | none | The AWS profile to use locally. Both model calls go to Bedrock, so this is the only credential setting; elsewhere the standard AWS credential chain supplies them. |
+| `AWS_REGION` | `us-west-2` | The region both Bedrock calls go to |
 | `RETRIEVAL_CANDIDATES` | `20` | Rows taken from each retriever before fusion |
 | `RETRIEVAL_TOP_K` | `5` | Chunks kept after fusion and sent to the LLM |
 | `RRF_K` | `60` | The RRF constant |
@@ -178,7 +201,7 @@ CREATE TABLE IF NOT EXISTS chunks (
     section     text,                          -- NULL in part 1; the part 2 chunker fills it
     text        text NOT NULL,
     tsv         tsvector GENERATED ALWAYS AS (to_tsvector('english', text)) STORED,
-    embedding   vector(384) NOT NULL,          -- must equal the embedding model's dimension (D2)
+    embedding   vector(1024) NOT NULL,         -- must equal the embedding model's dimension (D2)
     UNIQUE (document_id, chunk_set, ordinal)
 );
 
@@ -192,19 +215,22 @@ CREATE INDEX IF NOT EXISTS chunks_tsv_idx ON chunks USING gin (tsv);
 
 The `documents.edition` and `chunks.chunk_set` columns are what let part 2 compare chunkers and
 part 4 compare editions without a schema change. Changing to an embedding model with a different
-dimension means editing the `vector(384)` line, re-running `init-db` on a fresh database, and
+dimension means editing the `vector(1024)` line, re-running `init-db` on a fresh database, and
 re-ingesting; `ingest` must refuse to run when the embedder's dimension does not match the column.
 
 ## Tasks
 
 Do them in order. Each task lands as one or more conventional commits, with its tests in the same
-commit. Tests must not need an API key or network: use the fake embedder and fake chat model from
-task 4. Tests that need Postgres carry the `integration` marker and skip with a clear reason when
-`DATABASE_URL` is unreachable.
+commit. Tests must not need AWS credentials or a network: use the fake embedder and fake chat model
+from task 4, and a stubbed Bedrock client where a provider module itself is under test. The one
+exception is the single live Bedrock test added in task 4, which carries the `live` marker and is
+skipped when no credentials are present. Tests that need Postgres carry the `integration` marker and
+skip with a clear reason when `DATABASE_URL` is unreachable.
 
 ### Task 0: Preconditions
 
-- The decisions above are resolved.
+- The decisions above are settled (2026-09-21) and their outcomes are recorded in the decisions
+  table.
 - `uv sync`, `docker compose up -d --wait`, and `uv run python scripts/download_handbook.py` all
   succeed.
 - `uv run pytest` and `uv run python -m evals.verify_golden_set` pass.
@@ -219,7 +245,7 @@ as `fineprint = "fineprint.cli:main"` and register the `integration` pytest mark
 check that the built package includes it.
 
 Accept when: `fineprint init-db` works on an empty database and again on an initialized one; an
-integration test creates the schema and round-trips one row with a 384-dimension vector; settings
+integration test creates the schema and round-trips one row with a 1024-dimension vector; settings
 load from the environment with the documented defaults; no secret has a default value.
 
 Commit: `feat(db): add settings, connection pool, and schema`
@@ -282,24 +308,36 @@ class ChatModel(Protocol):
 Documents and queries get separate methods because many embedding models treat them differently.
 `LLMResult` carries tokens and latency now so part 3 can add cost and p95 latency without changing
 any signature. `providers/factory.py` maps the provider names from config to classes with a plain
-dict and raises a clear error for an unknown name. Add `fastembed` and write
-`providers/local_embedder.py` (check the installed library's API rather than recalling it). Put a
-deterministic `FakeEmbedder` (vectors derived from a hash of the text) and a `FakeChatModel`
-(returns a canned object) in `tests/fakes.py`.
+dict and raises a clear error for an unknown name. Add `boto3` and write
+`providers/bedrock_embedder.py` (check the installed library's API rather than recalling it): it
+calls `invoke_model` on a `bedrock-runtime` client with `amazon.titan-embed-text-v2:0`, asking for
+1024 dimensions and normalized vectors, and reads the vector out of the JSON response body. The
+client comes from a boto3 session built with `AWS_PROFILE` and `AWS_REGION`, and is injectable so a
+test can supply its own. Put a deterministic `FakeEmbedder` (vectors derived from a hash of the
+text) and a `FakeChatModel` (returns a canned object) in `tests/fakes.py`.
 
-Accept when: the local embedder returns vectors of length `dimension` and the same text gives the
-same vector twice; the factory test covers the known and unknown provider names; nothing imports a
-provider SDK at module import time except the provider's own module.
+Test the Bedrock embedder without the network by handing it a stubbed client — botocore's `Stubber`
+or a small fake object that returns a canned response body. Then add exactly one test that calls
+Bedrock for real, behind a `live` pytest marker, skipped unless AWS credentials are present;
+register the `live` marker in `pyproject.toml` next to `integration`.
 
-Commit: `feat(providers): add chat and embedding protocols with local embedder`
+Accept when: with a stubbed client the embedder returns vectors of length `dimension`, sends the
+model id and dimension from config, and raises a clear error on a response it cannot read; the fake
+embedder gives the same vector for the same text twice, which is what keeps ingestion repeatable;
+the factory test covers the known and unknown provider names; nothing imports a provider SDK at
+module import time except the provider's own module; the `live` test passes when run with
+credentials and skips without them.
+
+Commit: `feat(providers): add chat and embedding protocols with bedrock embedder`
 
 ### Task 5: Ingest command
 
 `fineprint ingest [--edition 2026] [--chunk-set fixed-220w]` verifies the PDF hash against the
-pinned value, extracts pages, chunks, embeds in batches, and writes `documents`, `pages`, and
-`chunks` in one transaction. Re-running replaces that document's rows for that chunk set. It prints
-the page count, chunk count, and the minimum, median, and maximum chunk length in words, and refuses
-to run on a dimension mismatch.
+pinned value, extracts pages, chunks, embeds the chunks, and writes `documents`, `pages`, and
+`chunks` in one transaction. Embedding goes to Bedrock (D2), so a real run needs AWS credentials;
+the integration test uses the fake embedder instead. Re-running replaces that document's rows for
+that chunk set. It prints the page count, chunk count, and the minimum, median, and maximum chunk
+length in words, and refuses to run on a dimension mismatch.
 
 The table of pinned editions (year, file name, sha256, source URLs) must live in one place that both
 the package and the script can import. Move `EDITIONS` from `scripts/download_handbook.py` into
@@ -395,12 +433,24 @@ class AnswerResponse(BaseModel):
     latency_ms: float
 ```
 
-Add `anthropic`. The Anthropic implementation of `ChatModel` uses `client.messages.parse(...,
-output_format=DraftAnswer)` and reads `response.parsed_output`. Load the `claude-api` skill before
-writing it and follow its current guidance: check `stop_reason` before reading content, handle
-`refusal`, and do not send `temperature` or other sampling parameters, which current Claude models
-reject. The API's own citations feature cannot be combined with structured output, which is why
-citations are chunk ids that the service checks itself.
+Add `anthropic[bedrock]`. The Bedrock implementation of `ChatModel` builds an `AnthropicBedrock`
+client for `AWS_REGION` and calls `us.anthropic.claude-opus-5`; "Provider facts verified on
+2026-09-21" says why that endpoint and that model ID and not the alternatives.
+
+Getting a validated `DraftAnswer` back takes a little work, because the API's built-in
+structured-output feature is refused on this path (same section). Use tool use instead: define one
+tool whose `input_schema` is the JSON schema of `DraftAnswer`, and have the model answer by calling
+it. First probe whether **strict tool use** is accepted — `strict: true` on that tool, which asks
+the API to guarantee the tool input matches the schema. If it is not accepted, use an ordinary tool
+with the same schema. Either way, validate the tool input with Pydantic and retry once when
+validation fails. Write which mechanism was chosen, and what the probe returned, into the commit
+body, so the next reader knows what the API did rather than what we hoped it would do.
+
+Load the `claude-api` skill before writing this and follow its current guidance: check `stop_reason`
+before reading content, handle `refusal`, and do not send `temperature` or other sampling
+parameters, which current Claude models reject.
+
+Citations are chunk ids that the service checks itself against the chunks it retrieved.
 
 Prompt rules, in the system prompt: answer only from the supplied excerpts of Medicare & You
 2026; copy dollar amounts, dates, and phone numbers exactly; cite the chunk ids used, each with a
@@ -451,10 +501,12 @@ Commit: `feat(evals): extend golden set to 40 questions`
 ### Task 10: Eval runner, manual review, scoreboard
 
 `python -m evals.run_golden_set --config hybrid [--retrieval-only]` runs every question and writes
-`evals/results/<run_id>.json` (format below). `--retrieval-only` skips the LLM, needs no key, and is
-deterministic. Configurations in part 1: `hybrid`, `vector-only`, and `lexical-only`. Run the last
-two retrieval-only; they cost nothing and show whether fusion earns its place. The runner creates
-`evals/results/` when it is missing.
+`evals/results/<run_id>.json` (format below). `--retrieval-only` skips the answer model, which is
+the expensive call, but it is neither free nor offline: every mode that searches by meaning embeds
+the question, and since D2 that is one Bedrock call per question. So a retrieval-only run still
+needs AWS credentials. Configurations in part 1: `hybrid`, `vector-only`, and `lexical-only`. Run
+the last two retrieval-only to show whether fusion earns its place; `lexical-only` is the one
+configuration that calls no model at all. The runner creates `evals/results/` when it is missing.
 
 `python -m evals.review evals/results/<run_id>.json` shows each question, the expected answer, and
 the generated answer, and records `pass` or `fail` with an optional note. Unreviewed answers stay
@@ -555,7 +607,9 @@ golden-set size, the corpus edition and hash, and the generation time.
 - `answer_question()` is the single entry point for a query: part 3 wraps it with tracing and puts
   the agent above it.
 - `documents.edition` and `CORPUS_EDITION`: part 4 loads another edition and diffs the answers.
-- `--retrieval-only` and `scoreboard --check`: part 4 runs them in CI without secrets.
+- `--retrieval-only` and `scoreboard --check`: part 4 runs them in CI without the answer model.
+  Since D2 put embeddings on Bedrock too, CI still needs AWS credentials for anything that embeds a
+  question; `docs/PLAN.md` records under part 4 how that role is to be provided.
 
 ## What the video must show
 

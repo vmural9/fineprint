@@ -25,19 +25,22 @@ if it is built, it carries them too.
 
 ## Part 1 — RAG service
 
-PDF ingested, chunked, embedded into Postgres with pgvector. Hybrid retrieval (BM25 via Postgres
-full-text search plus vector similarity, fused with reciprocal rank fusion). FastAPI service with
-`/ask` and `/search` endpoints. LLM answer generation with a Pydantic-structured response (answer,
-cited chunks with page numbers, confidence). A first version of the golden set (about 40 real
-questions a Medicare beneficiary would ask, each with expected answer and expected source pages).
-A CLI that runs the golden set and prints the scoreboard, even if the metrics in part 1 are just
+PDF ingested, chunked, embedded into Postgres with pgvector. Hybrid retrieval (lexical search via
+Postgres full-text search plus vector similarity, fused with reciprocal rank fusion; the brief
+calls the lexical half "BM25", which decision D3 corrects). FastAPI service with `/ask` and
+`/search` endpoints. LLM answer generation with a Pydantic-structured response (answer, cited
+chunks with page numbers, confidence). A first version of the golden set (about 40 real questions a
+Medicare beneficiary would ask, each with expected answer and expected source pages). A CLI that
+runs the golden set and prints the scoreboard, even if the metrics in part 1 are just
 exact-page-hit rate and a manual pass/fail column.
 
 Build spec: [parts/01-rag-service.md](parts/01-rag-service.md). It carries thirteen ordered tasks
-(Task 0 to Task 12) with acceptance criteria, the data model, the golden-set schema, the eval design, and what the
-video must show. It also carries a "Decisions waiting for the owner" table that must be resolved
-before the tasks it blocks. One of those decisions, D3, concerns the phrase "BM25 via Postgres
-full-text search" above — see "Findings from setup that affect the plan".
+(Task 0 to Task 12) with acceptance criteria, the data model, the golden-set schema, the eval
+design, and what the video must show. It also carries the eight build decisions, which were settled
+on 2026-09-21 and recorded with their outcomes in that spec's decisions table; no task is waiting on
+one. Two of them show up in this file: D1 and D2 put both model calls on AWS Bedrock, and D3
+concerns the phrase "BM25 via Postgres full-text search" above. Both are in "Findings from setup
+that affect the plan".
 
 ### Definition of done
 
@@ -108,6 +111,15 @@ prompt-leak attempts). Deterministic assertions on tool calls. promptfoo running
 with pass/fail thresholds. Demo: a PR that degrades answers gets blocked; swapping the corpus from
 the 2025 edition to the 2026 edition shows exactly which answers changed.
 
+**A note, not a deliverable: CI will need AWS credentials.** Decisions D1 and D2 put both model
+calls on AWS Bedrock, so even a retrieval-only eval run makes a Bedrock call to embed each
+question. The GitHub Actions job therefore needs an AWS role that it assumes through OIDC (OpenID
+Connect: GitHub signs a short-lived token for the workflow run and AWS trusts it, so no long-lived
+access key is stored in the repository). The AWS account is shared with other projects, so that
+role must be created through a CloudFormation stack named `fineprint-ci`, per the AWS rule in
+`CLAUDE.md`. The trust policy, the permissions, and which Bedrock models the role may call belong
+in the part 4 spec.
+
 ### Definition of done
 
 - [ ] The judge is calibrated against about 20 hand-labelled cases and its agreement with the hand
@@ -157,8 +169,22 @@ compared with the one before it.
 
 ## Findings from setup that affect the plan
 
-Established during the setup session on 2026-09-21, from the PDF and the package index rather than
-from memory. They change what later parts must do.
+Established on 2026-09-21, from the PDF, the package index, and live API calls rather than from
+memory. They change what later parts must do.
+
+**Both model calls go to AWS Bedrock, so one provider covers both.** The setup session assumed that
+one provider could not cover both kinds of call, because the Anthropic API has no embeddings
+endpoint. On AWS Bedrock it can, and that is what was decided. Answers come from Claude Opus 5
+(model ID `us.anthropic.claude-opus-5`, region `us-west-2`, through the `anthropic` SDK's
+`AnthropicBedrock` client) and embeddings from Amazon Titan Text Embeddings v2
+(`amazon.titan-embed-text-v2:0`, 1024 numbers per passage, through boto3) — one provider, one set
+of credentials, no Anthropic API key. Three consequences for the plan. Chunk vectors are 1024 wide,
+which fixes the database column. Nothing in the project runs on a local embedding model any more,
+so **a local embedder becomes a candidate experiment for part 2**, measured on the same golden set
+as the chunking and re-ranker experiments. And no eval run is free or offline, because embedding a
+question is a Bedrock call — which is the problem part 4's CI gate has to solve, noted above. The
+endpoint and model-ID details behind this, all checked with live calls, are in the part 1 spec
+under "Provider facts verified on 2026-09-21".
 
 **The edition rolled over to 2027 before we started.** medicare.gov serves the handbook at one
 unversioned URL, and since September 2026 that URL has served "Medicare & You 2027". CMS keeps no
@@ -166,8 +192,8 @@ public archive of prior-year handbooks, so the download script pins the 2026 byt
 fetches them from the Internet Archive, with a primary and a fallback snapshot. The 2025 edition is
 pinned the same way behind `--edition 2025`, ready for part 4. Consequence for the plan: the corpus
 is reproducible, but it now depends on a third-party archive, so part 4's CI job must cache the
-file and retry rather than re-download it blindly. Whether to stay on 2026 or move to 2027 is
-decision D8 in the part 1 spec; the plan assumes 2026, as briefed.
+file and retry rather than re-download it blindly. Decision D8 settled the edition on 2026-09-21:
+the corpus stays on the 2026 edition, as briefed.
 
 **The 2026 edition has two printings that disagree about money.** The September 2025 printing
 prints 2025 dollar amounts throughout — a $185 Part B premium, a $1,676 Part A deductible — under a
@@ -180,12 +206,11 @@ last year's answers. Part 4 should say so when it reports which answers changed.
 **Postgres full-text ranking is not BM25.** The brief describes the lexical half of hybrid
 retrieval as "BM25 via Postgres full-text search". Built-in Postgres ranking (`ts_rank_cd`) is a
 coverage-density score, not BM25; real BM25 needs an extension that the `pgvector/pgvector:pg16`
-image does not ship. This is decision D3 in the part 1 spec, whose proposed default is to use
-built-in full-text search in part 1 and call it "lexical (Postgres FTS)" everywhere rather than
-claim BM25. Consequence for the plan: **true BM25 becomes a candidate experiment for part 2**,
-alongside the chunking and re-ranker experiments, measured on the same golden set and the same
-scoreboard. If it is run, it needs a database image that ships a BM25 extension, and that cost
-belongs in the part 2 spec.
+image does not ship. Decision D3 settled this on 2026-09-21: part 1 uses built-in full-text search
+and calls it "lexical (Postgres FTS)" everywhere rather than claiming BM25. Consequence for the
+plan: **true BM25 becomes a candidate experiment for part 2**, alongside the chunking and re-ranker
+experiments, measured on the same golden set and the same scoreboard. If it is run, it needs a
+database image that ships a BM25 extension, and that cost belongs in the part 2 spec.
 
 **RAGAS pulls LangChain in as a hard dependency — a note for the part 2 spec.** Checked against
 `https://pypi.org/pypi/ragas/json` on 2026-09-21: `ragas` 0.4.3 lists `langchain`, `langchain-core`,
@@ -195,6 +220,8 @@ install unconditionally, along with `openai`, `instructor`, `datasets`, `tiktoke
 for it, and part 2 does not: it calls for RAGAS. So the part 2 spec must (a) put `ragas` in a
 dev/eval dependency group rather than in the project's runtime dependencies, (b) forbid any import
 of a LangChain package from `src/fineprint/`, so the ban holds where it matters, and (c) decide
-which model computes the RAGAS metrics and how it is wired, because the hard dependency on
-`langchain_openai` and `openai` means RAGAS's defaults are OpenAI-shaped while decision D1 proposes
-Anthropic for generation. That last point needs an answer before part 2 starts, not during it.
+which models compute the RAGAS metrics and how they are wired. RAGAS needs a judge model and an
+embedding model of its own, and its hard dependency on `langchain_openai` and `openai` means its
+defaults are OpenAI-shaped, while this project's models are both on AWS Bedrock (D1 and D2). Either
+RAGAS is pointed at Bedrock or part 2 accepts a second provider for evaluation only. That needs an
+answer before part 2 starts, not during it.

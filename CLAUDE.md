@@ -34,18 +34,23 @@ the video script in `docs/scripts/NN-name.md` — after the part is built, never
 parent issue per part and one child issue per task of the current part. Reference the issue in
 commits (`Refs #N`) and close it with `Closes #N`.
 
-**AWS.** If a part needs AWS, use the `merlion-brands` profile, and create resources only through
-a stack whose name starts with `fineprint-`. The account is shared with other projects.
+**AWS.** Use the `merlion-brands` profile, and create resources only through a stack whose name
+starts with `fineprint-`. The account is shared with other projects. Part 1 needs AWS: both model
+calls go to Bedrock. Part 4's CI eval gate will need a role that GitHub Actions assumes through
+OIDC, created through a CloudFormation stack named `fineprint-ci`.
 
 ## Current status (2026-09-21)
 
 Setup is done: the uv project, the docker compose Postgres, `scripts/download_handbook.py`, and the
-first 15 golden-set questions. **Part 1 is not started.** No application code exists, no eval has
-been run, and there are no results and no scoreboard file.
+first 15 golden-set questions.
 
-Before building: the "Decisions waiting for the owner" table in `docs/parts/01-rag-service.md` must
-be resolved with the owner. Each row names the task it blocks. Do not start a blocked task on a
-guess — ask, then record the outcome by editing that table.
+**The eight build decisions are settled.** They were taken on 2026-09-21 and their outcomes are
+recorded in the decisions table in `docs/parts/01-rag-service.md`. Nothing is blocked on an open
+decision. The one with consequences everywhere: both model calls — answers and embeddings — go to
+AWS Bedrock, so read "Provider facts you must not get wrong" below before writing any provider code.
+
+**Part 1 is under way**, starting with Task 1 (settings, database plumbing, schema). No eval has
+been run yet, and there are no results and no scoreboard file.
 
 ## Stack and conventions
 
@@ -53,7 +58,7 @@ guess — ask, then record the outcome by editing that table.
 - FastAPI, Postgres 16 with pgvector, docker compose for local Postgres.
 - LLM calls go through a thin provider abstraction so the model can be switched by config. Default
   to one provider now; do not spend effort on multi-provider until part 3. Embeddings go through
-  the same abstraction.
+  the same abstraction, and since both calls go to AWS Bedrock, one provider really does cover both.
 - Conventional commit messages. Tag the end of each part as `part-N`.
 
 ## Hard rules
@@ -82,6 +87,33 @@ These are not style preferences. Breaking one invalidates what the project claim
    the code they cover.
 8. **Nothing written here may imply that something exists when it does not.** No links to tags,
    videos, endpoints, or results that have not been produced.
+
+## Provider facts you must not get wrong
+
+Decided and checked with live calls on 2026-09-21. `docs/parts/01-rag-service.md` carries the
+detail, under the decisions table and "Provider facts verified on 2026-09-21". Do not replace any
+of these from memory; re-check with a live call first.
+
+- **Everything goes to AWS Bedrock in `us-west-2`**, under the `merlion-brands` profile, through
+  the standard AWS credential chain. **There is no Anthropic API key in this project**, and
+  `ANTHROPIC_API_KEY` is not a setting. Locally, `AWS_PROFILE` in `.env` is what supplies
+  credentials.
+- **Answers:** Claude Opus 5, model ID `us.anthropic.claude-opus-5`, called with the `anthropic`
+  SDK's `AnthropicBedrock` client (install `anthropic[bedrock]`). The `us.` prefix marks a regional
+  inference profile — an ID that routes the request across a group of regions. The bare
+  `anthropic.claude-opus-5` is refused with "on-demand throughput isn't supported".
+- **Use `AnthropicBedrock`, the standard runtime endpoint, not `AnthropicBedrockMantle`.** In
+  `us-west-2` the Mantle endpoint serves Claude Haiku 4.5 but returns 404 for Opus 5 and Sonnet 5.
+- **The API's built-in structured output does not work on this path.**
+  `client.messages.parse(..., output_format=...)` fails with 400 `output_config.format: Extra inputs
+  are not permitted`. Validated structures come from tool use plus Pydantic validation instead; the
+  part 1 spec's Task 7 says exactly how.
+- **Embeddings:** `amazon.titan-embed-text-v2:0` through boto3's `bedrock-runtime` `invoke_model`,
+  1024 dimensions, normalized. So `chunks.embedding` is `vector(1024)`, and changing the embedding
+  model means a fresh database and a full re-ingest.
+- **Nothing in the eval path is free or offline.** `--retrieval-only` skips the answer model but
+  still embeds each question through Bedrock. Tests stay offline with fakes and a stubbed boto3
+  client; the one live test carries the `live` pytest marker and skips without credentials.
 
 ## Corpus facts you must not get wrong
 

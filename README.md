@@ -24,14 +24,16 @@ code that produced them.
 ## Status
 
 Setup is complete: the Python project, a Postgres 16 container with pgvector, a pinned,
-hash-verified download of the handbook, and the first 15 golden-set questions. **Part 1 has not
-started.** There is no service to run and nothing to demo yet.
+hash-verified download of the handbook, and the first 15 golden-set questions. The build decisions
+for part 1 were settled on 2026-09-21 — among them that both model calls, the one that writes
+answers and the one that turns text into vectors, go to AWS Bedrock — and **part 1 is now being
+built.** There is no service to run and nothing to demo yet.
 
 ## The series
 
 | Part | What it adds | Status |
 |------|--------------|--------|
-| 1. RAG service | Ingestion into Postgres with pgvector, hybrid retrieval with reciprocal rank fusion, FastAPI `/ask` and `/search`, structured answers with cited pages, golden set v1, the first scoreboard | not started |
+| 1. RAG service | Ingestion into Postgres with pgvector, hybrid retrieval with reciprocal rank fusion, FastAPI `/ask` and `/search`, structured answers with cited pages, golden set v1, the first scoreboard | in progress |
 | 2. Retrieval quality | RAGAS metrics on the golden set; fixed-size chunking against structure-aware chunking against a cross-encoder re-ranker, side by side | planned |
 | 3. Observability and agent | Langfuse tracing on every LLM and tool call; a two-tool agent over the retriever; provider retries, timeouts and fallback; cost and p95 latency | planned |
 | 4. Eval gate | Calibrated LLM-as-judge rubric, an adversarial slice, deterministic tool-call assertions, promptfoo in GitHub Actions with pass/fail thresholds | planned |
@@ -65,7 +67,11 @@ uv run python -m evals.verify_golden_set     # check every golden-set evidence q
 ```
 
 The commands that ingest the handbook, run the service and produce the scoreboard arrive with
-part 1.
+part 1. Those will need one thing more: an AWS account with access to Amazon Bedrock in `us-west-2`,
+and credentials for it in the environment. Both model calls go there — Claude Opus 5 writes the
+answers and Amazon Titan Text Embeddings v2 turns passages and questions into vectors — so there is
+no separate API key to obtain, and no model runs on your machine. The commands above need none of
+it.
 
 ## The corpus
 
