@@ -28,6 +28,10 @@ PASS = "pass"
 FAIL = "fail"
 VERDICTS = frozenset({PASS, FAIL})
 
+# What a missing measurement looks like everywhere it is printed. A dash is the absence of a
+# measurement, never a stand-in value, so it is defined once and imported.
+NOT_MEASURED = "—"
+
 
 class PageRange(Protocol):
     """Anything that sits on a run of handbook pages: a retrieved chunk, or a citation."""
@@ -196,6 +200,16 @@ def manual_pass(verdicts: Iterable[str | None]) -> ManualPass:
     """Count the human verdicts. An unreviewed answer is neither a pass nor a fail."""
     reviewed = [verdict for verdict in verdicts if verdict is not None]
     return ManualPass(passes=sum(verdict == PASS for verdict in reviewed), reviewed=len(reviewed))
+
+
+def as_percentage(value: float | None) -> str:
+    """A share printed as a percentage, or the dash that means nobody has measured it."""
+    return NOT_MEASURED if value is None else f"{value * 100:.1f}%"
+
+
+def as_score(value: float | None) -> str:
+    """A plain number, such as mrr, printed to two places, or the dash for no measurement."""
+    return NOT_MEASURED if value is None else f"{value:.2f}"
 
 
 def aggregate(scores: Iterable[QuestionScore]) -> Aggregates:
