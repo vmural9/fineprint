@@ -39,9 +39,12 @@ def new_test_database() -> Iterator[Callable[[], str]]:
             maintenance_url, connect_timeout=CONNECT_TIMEOUT, autocommit=True
         )
     except psycopg.OperationalError as error:
+        # Only the first line: libpq adds a paragraph of hints, and the next sentence is the
+        # one the reader needs.
+        reason = str(error).splitlines()[0].rstrip(". ")
         pytest.skip(
-            f"Postgres is not reachable at {describe_database(database_url)}: "
-            f"{str(error).strip()} Start it with: docker compose up -d --wait"
+            f"Postgres is not reachable at {describe_database(database_url)}: {reason}. "
+            "Start it with: docker compose up -d --wait"
         )
 
     names: list[str] = []
