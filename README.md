@@ -98,7 +98,7 @@ docs/parts/                   build spec per part, written when that part starts
 docs/scripts/                 video scripts, written after each part is built
 evals/                        golden set, eval runners, scoreboard generator
 scripts/download_handbook.py  pinned, hash-verified handbook download
-src/medicare_qa/              application code — empty until part 1
+src/fineprint/                application code — empty until part 1
 tests/
 docker-compose.yml  pyproject.toml  .env.example
 ```

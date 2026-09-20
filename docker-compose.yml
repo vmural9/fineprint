@@ -2,16 +2,16 @@ services:
   db:
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-medicare}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-medicare}
-      POSTGRES_DB: ${POSTGRES_DB:-medicare_qa}
+      POSTGRES_USER: ${POSTGRES_USER:-fineprint}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fineprint}
+      POSTGRES_DB: ${POSTGRES_DB:-fineprint}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test:
-        ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-medicare} -d ${POSTGRES_DB:-medicare_qa}"]
+        ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fineprint} -d ${POSTGRES_DB:-fineprint}"]
       interval: 5s
       timeout: 5s
       retries: 10
