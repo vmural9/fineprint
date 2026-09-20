@@ -20,7 +20,6 @@ import argparse
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, is_dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -36,6 +35,7 @@ from evals.results import (
     RunResult,
     git_state,
     make_run_id,
+    now_utc,
     results_path,
     save,
     sha256_of,
@@ -308,7 +308,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     result = RunResult(
         run_id=make_run_id(args.config),
-        created_at=_now(),
+        created_at=now_utc(),
         git=git_state(),
         config=RunConfig(
             name=args.config,
@@ -333,11 +333,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.retrieval_only:
         print(f"next: python -m evals.review {path}")
     return EXIT_OK
-
-
-def _now() -> str:
-    """The moment the run finished, in UTC, the way the results file spells it."""
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 if __name__ == "__main__":

@@ -149,6 +149,11 @@ class RunResult:
         return [question for question in self.questions if question.error]
 
 
+def now_utc() -> str:
+    """The moment something happened, spelled the way a results file spells it."""
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def make_run_id(config_name: str, when: datetime | None = None) -> str:
     """Build `<UTC timestamp>_<config name>`, the name of one run and of its file."""
     moment = when or datetime.now(UTC)
