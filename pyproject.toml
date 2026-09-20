@@ -5,6 +5,7 @@ description = "A RAG service that answers Medicare questions from the official \
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "boto3>=1.43.98",
     "pgvector>=0.5.0",
     "psycopg[binary,pool]>=3.3.6",
     "pydantic>=2.13.5",
@@ -32,6 +33,11 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+# Live tests call AWS and cost money, so they are deselected unless asked for by name:
+#   AWS_PROFILE=merlion-brands AWS_REGION=us-west-2 uv run pytest -m live
+# A -m on the command line replaces the one below.
+addopts = "-m 'not live'"
 markers = [
     "integration: needs a running Postgres; skips with a reason when DATABASE_URL is unreachable",
+    "live: really calls AWS Bedrock; deselected by default and skipped without credentials",
 ]
