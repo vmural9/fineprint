@@ -8,8 +8,9 @@ from pydantic import BaseModel
 
 from fineprint.config import Settings
 from fineprint.providers.base import ChatModel, Embedder
+from fineprint.providers.bedrock_chat import BedrockChatModel
 from fineprint.providers.bedrock_embedder import BedrockEmbedder
-from fineprint.providers.factory import UnknownProviderError, get_embedder
+from fineprint.providers.factory import UnknownProviderError, get_chat_model, get_embedder
 from tests.fakes import FakeChatModel, FakeEmbedder
 
 
@@ -28,6 +29,15 @@ def test_get_embedder_builds_the_bedrock_embedder_from_settings():
     assert embedder.model == "amazon.titan-embed-text-v2:0"
 
 
+def test_get_chat_model_builds_the_bedrock_chat_model_from_settings():
+    settings = Settings(llm_provider="bedrock", llm_model="us.anthropic.claude-opus-5")
+
+    chat = get_chat_model(settings)
+
+    assert isinstance(chat, BedrockChatModel)
+    assert chat.model == "us.anthropic.claude-opus-5"
+
+
 def test_an_unknown_embedding_provider_names_the_ones_that_exist():
     settings = Settings(embedding_provider="openai")
 
@@ -38,6 +48,17 @@ def test_an_unknown_embedding_provider_names_the_ones_that_exist():
     assert "openai" in message
     assert "EMBEDDING_PROVIDER" in message
     assert "bedrock" in message
+
+
+def test_an_unknown_chat_provider_names_the_ones_that_exist():
+    settings = Settings(llm_provider="ollama")
+
+    with pytest.raises(UnknownProviderError) as raised:
+        get_chat_model(settings)
+
+    message = str(raised.value)
+    assert "ollama" in message
+    assert "LLM_PROVIDER" in message
 
 
 def test_importing_the_factory_does_not_import_a_provider_sdk():
