@@ -63,7 +63,7 @@ def test_claude_opus_5_answers_one_excerpt_as_a_validated_draft_answer(settings:
     )
     user = (
         '<chunk id="7" pages="18-18">In 2026, you pay a standard monthly Part B premium of '
-        "$206.50. Some people pay more based on income.</chunk>\n\n"
+        "$202.90. Some people pay more based on income.</chunk>\n\n"
         "Question: What is the standard Part B premium in 2026?"
     )
 
@@ -71,7 +71,7 @@ def test_claude_opus_5_answers_one_excerpt_as_a_validated_draft_answer(settings:
 
     assert isinstance(result.parsed, DraftAnswer)
     assert result.parsed.found_in_handbook is True
-    assert "206.50" in result.parsed.answer
+    assert "202.90" in result.parsed.answer
     assert [citation.chunk_id for citation in result.parsed.citations] == [7]
     assert result.model == settings.llm_model
     assert result.input_tokens > 0

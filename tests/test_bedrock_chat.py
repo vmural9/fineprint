@@ -35,9 +35,9 @@ class DraftAnswer(BaseModel):
 
 
 VALID_INPUT = {
-    "answer": "The standard Part B premium is $206.50 a month in 2026.",
+    "answer": "The standard Part B premium is $202.90 a month in 2026.",
     "found_in_handbook": True,
-    "citations": [{"chunk_id": 7, "quote": "the Part B standard monthly premium is $206.50"}],
+    "citations": [{"chunk_id": 7, "quote": "the Part B standard monthly premium is $202.90"}],
     "confidence": "high",
 }
 # `confidence` is not one of the three allowed words, so Pydantic rejects it.
