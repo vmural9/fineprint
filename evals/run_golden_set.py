@@ -23,6 +23,9 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+import psycopg
+from psycopg_pool import PoolTimeout
+
 from evals import metrics
 from evals.golden import DEFAULT_GOLDEN_SET, GoldenItem, GoldenSetError, load_golden_set
 from evals.results import (
@@ -304,6 +307,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
     except RunError as error:
         print(f"ERROR: {error}", file=sys.stderr)
+        return EXIT_FAILED
+    except (psycopg.Error, PoolTimeout) as error:
+        # The database being down or unprepared is an ordinary mistake, not a crash: say which
+        # command fixes it instead of printing a traceback.
+        print(
+            f"ERROR: cannot query {describe_database(settings.database_url)}: "
+            f"{str(error).splitlines()[0]}\n"
+            "Start it with: docker compose up -d --wait, then: fineprint init-db && "
+            "fineprint ingest",
+            file=sys.stderr,
+        )
         return EXIT_FAILED
 
     result = RunResult(

@@ -74,3 +74,47 @@ uv run python -m evals.verify_golden_set   # re-extract the cited pages and chec
 `verify_golden_set` prints one line per item and a summary. It exits 1 when a quote or a
 page number does not check out, and 2 when the handbook PDF is missing, naming
 `scripts/download_handbook.py`. Pass `--pdf PATH` to check against a different copy.
+
+## Running an eval
+
+Three commands, in this order. They need an ingested corpus, and the first one calls AWS
+Bedrock: every mode that searches by meaning embeds each question, and `hybrid` also sends the
+retrieved chunks to the answer model.
+
+```bash
+uv run python -m evals.run_golden_set --config hybrid                     # search, answer, score
+uv run python -m evals.run_golden_set --config vector-only --retrieval-only
+uv run python -m evals.run_golden_set --config lexical-only --retrieval-only   # no model at all
+uv run python -m evals.review evals/results/<run_id>.json                 # your pass or fail
+uv run python -m evals.scoreboard                                         # regenerate the tables
+```
+
+- **`run_golden_set`** writes `evals/results/<run_id>.json`, where `run_id` is
+  `<UTC timestamp>_<config name>`. The file records the commit and whether the tree was dirty,
+  the whole configuration, the corpus and golden-set hashes, and, per question, the chunks that
+  came back with their ranks, the metrics, the full answer, and the manual verdict. One
+  question failing is recorded on that question; the run carries on.
+- **`review`** shows each answered question with its expected answer, the generated answer, the
+  pages it cited and whether each quote was verified, and reads `p`, `f`, `s` or `q` plus an
+  optional note. It saves after every verdict. `--only-unreviewed` picks up where you left off.
+- **`scoreboard`** regenerates `evals/scoreboard.md` and the block between
+  `<!-- scoreboard:start -->` and `<!-- scoreboard:end -->` in the repository `README.md` from
+  the latest results file of each configuration. `--check` writes nothing and exits non-zero
+  when either file is out of date, which is what stops a hand edit. Neither file is ever edited
+  by hand: if a number is wrong, fix the results or the generator and run it again.
+
+The metrics are defined in `metrics.py`, one short function each, and in "Eval design" in
+[docs/parts/01-rag-service.md](../docs/parts/01-rag-service.md):
+
+| Metric | What it asks |
+|--------|--------------|
+| `page_hit@5` | Did any of the 5 retrieved chunks cover a page the answer needs? |
+| `page_recall@5` | What share of the pages the answer needs did they cover? |
+| `mrr` | How far down the list was the first chunk that covered one? |
+| `cited_page_hit` | Did the answer's own citations land on a page the answer needs? |
+| `abstention_accuracy` | Was "the handbook does not say this" right, on every question? |
+| `manual_pass` | Of the answers a person read, what share were right? |
+
+Retrieval metrics are computed over the answerable questions only: an `unanswerable` item has
+no expected pages, and what it measures is abstention. A metric that does not apply to a
+question is left empty rather than scored zero, so it never drags an average down.
