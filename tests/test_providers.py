@@ -99,11 +99,11 @@ def test_the_fake_embedder_gives_the_same_vector_for_the_same_text_twice():
 
 
 def test_the_fake_chat_model_returns_the_canned_object_and_records_the_prompt():
-    chat = FakeChatModel(Answer(text="the standard premium is $206.50"))
+    chat = FakeChatModel(Answer(text="the standard premium is $202.90"))
 
     result = chat.complete_structured("system rules", "the question", Answer)
 
-    assert result.parsed.text == "the standard premium is $206.50"
+    assert result.parsed.text == "the standard premium is $202.90"
     assert result.model == "fake-chat-model"
     assert chat.calls == [("system rules", "the question", Answer)]
 

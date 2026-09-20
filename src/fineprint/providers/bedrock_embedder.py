@@ -2,7 +2,7 @@
 
 An embedding is a list of numbers that stands for a piece of text: texts about the same
 thing end up close together, so a question about "the Part B premium" finds the handbook
-paragraph that says "$206.50 each month" even though they share few words. Titan V2 returns
+paragraph that says "$202.90 each month" even though they share few words. Titan V2 returns
 1024 numbers, normalized to unit length, which is why `chunks.embedding` is `vector(1024)`
 and why cosine distance in Postgres compares them fairly.
 
