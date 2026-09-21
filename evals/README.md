@@ -77,9 +77,9 @@ page number does not check out, and 2 when the handbook PDF is missing, naming
 
 ## Running an eval
 
-Three commands, in this order. They need an ingested corpus, and the first one calls AWS
+Run, review, regenerate — in that order. They need an ingested corpus, and the runs call AWS
 Bedrock: every mode that searches by meaning embeds each question, and `hybrid` also sends the
-retrieved chunks to the answer model.
+retrieved chunks to the answer model. `lexical-only` is the one configuration that calls nothing.
 
 ```bash
 uv run python -m evals.run_golden_set --config hybrid                     # search, answer, score
@@ -112,7 +112,7 @@ The metrics are defined in `metrics.py`, one short function each, and in "Eval d
 | `page_recall@5` | What share of the pages the answer needs did they cover? |
 | `mrr` | How far down the list was the first chunk that covered one? |
 | `cited_page_hit` | Did the answer's own citations land on a page the answer needs? |
-| `abstention_accuracy` | Was "the handbook does not say this" right, on every question? |
+| `abstention_accuracy` | Was "the handbook does not say this" right, on every answered question? |
 | `manual_pass` | Of the answers a person read, what share were right? |
 
 Retrieval metrics are computed over the answerable questions only: an `unanswerable` item has

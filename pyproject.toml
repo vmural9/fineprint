@@ -46,7 +46,7 @@ known-first-party = ["fineprint", "evals"]
 testpaths = ["tests"]
 pythonpath = ["."]
 # Live tests call AWS and cost money, so they are deselected unless asked for by name:
-#   AWS_PROFILE=merlion-brands AWS_REGION=us-west-2 uv run pytest -m live
+#   AWS_PROFILE=<your-aws-profile> AWS_REGION=us-west-2 uv run pytest -m live
 # A -m on the command line replaces the one below.
 addopts = "-m 'not live'"
 markers = [

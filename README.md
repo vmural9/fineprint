@@ -192,9 +192,11 @@ uv run fineprint ask "How much is the Part B premium in 2026?"
 uv run fineprint ask "How much would a Medigap Plan G policy cost my dad per month?"
 ```
 
-Running that first question in all three modes shows, on one question, the fusion problem the
-numbers below describe: vector search puts the chunk carrying the standard Part B premium at the
-top of its list, and the hybrid pushes it down behind chunks that both retrievers agreed on.
+Running that first question in all three modes shows what fusion does to a ranking: vector search
+puts the chunk carrying the standard Part B premium first, and the hybrid drops it to third behind
+two chunks that both retrievers returned. Page 23 still comes back at rank 1 in all three modes, so
+nothing is lost here — the question where fusion actually loses a page is `q034`, described under
+["What the numbers say"](#what-the-numbers-say).
 
 The same two operations over HTTP, plus a health check that tells "up" from "up but empty":
 
@@ -215,9 +217,9 @@ curl -X POST http://127.0.0.1:8000/ask \
 ```
 
 Then the evals. The first command answers all 40 questions with Claude Opus 5 and is the expensive
-one; the other two skip the answer model. None of them is free or offline, because every mode that
-searches by meaning embeds each question through Bedrock — `lexical-only` is the one configuration
-that calls no model at all.
+one. The other two skip the answer model, but `vector-only` still embeds each question through
+Bedrock; `lexical-only` is the only configuration that calls no model at all, and so the only one
+that is free and runs offline.
 
 ```bash
 uv run python -m evals.run_golden_set --config hybrid
@@ -251,16 +253,20 @@ answerable questions only; an unanswerable question has no expected pages, and w
 abstention. The results files are in `evals/results/`, and the scoreboard recomputes every
 aggregate from their per-question rows.
 
-**The hybrid does not win.** Vector-only retrieval gets 88.2% on Page hit@5; the hybrid gets 85.3%.
-The secondary metrics say it more sharply: `page_recall@5` is 88.2% for vector-only against 82.4%
-for the hybrid, and `mrr` is 0.86 against 0.77. Fusion made the system slightly worse than one of
-the legs it fuses.
+**The hybrid does not win — by one question.** Vector-only retrieval gets 88.2% on Page hit@5; the
+hybrid gets 85.3%. That 2.9-point gap is a single question out of the 34 answerable ones, decided
+by a tie-break, so it is a worked example of how fusion can hurt rather than evidence that it
+usually does. The secondary metrics point the same way with a little more behind them:
+`page_recall@5` is 88.2% for vector-only against 82.4% for the hybrid — three expected pages out of
+45, across three questions — and `mrr` is 0.86 against 0.77. On this golden set, at this size,
+fusion did not earn its place; whether that survives a bigger set is part 2's job, not a conclusion
+part 1 is entitled to.
 
-That is what reciprocal rank fusion does when one of the two lists is weak. RRF scores a chunk by
-its position in each list it appears in and adds those scores up, so a chunk both retrievers
-returned outranks a chunk only one of them returned. That is the behaviour you want when both lists
-are good, and exactly the behaviour that hurts here: agreement with a weak lexical list is worth
-more than being first in the strong one. Question `q034` — "Mom has a high income and gets her drug
+Here is the mechanism behind that one question. RRF scores a chunk by its position in each list it
+appears in and adds those scores up, so a chunk both retrievers returned outranks a chunk only one
+of them returned. That is the behaviour you want when both lists are good, and exactly the
+behaviour that cost a page here: agreement with a weak lexical list was worth more than being first
+in the strong one. Question `q034` — "Mom has a high income and gets her drug
 coverage through a Medicare Advantage plan. Does she still owe the Part D extra charge, and does
 she pay it to the plan?" — shows it cleanly. The answer is on page 82. Vector search put chunks
 from page 82 at the top of its list; lexical search did not return page 82 anywhere in its 20
@@ -286,10 +292,12 @@ than assuming it.
 
 **The answers hold up where retrieval does.** `cited_page_hit` is 85.3% — the same as the hybrid's
 page hit rate, and on the same questions: whenever an expected page was retrieved, the answer cited
-it, and whenever one was not, it did not invent one. `abstention_accuracy` is 90.0%; every wrong
-abstention in that run is an answerable question where retrieval had not brought back everything
-the answer needed, and the model said so instead of filling the gap. Not one of them produced a
-confident wrong answer.
+it, and whenever one was not, it did not invent one. `abstention_accuracy` is 90.0%, and all four
+errors run the same way: the service said "the handbook doesn't say" about a question the handbook
+does answer. In every one of the four, retrieval had already failed — three missed the expected
+page outright, and the fourth, `q029`, needed pages 18 and 80 and got only 80, so the model refused
+on exactly the half it had not been shown. Not one of the four is the model discarding evidence it
+was given, and not one produced a confident wrong answer.
 
 **The Manual pass column is empty** because nobody has graded the answers yet: `0 of 40` reviewed,
 as the detail table says. `page_hit@5` measures whether the right page came back, and
