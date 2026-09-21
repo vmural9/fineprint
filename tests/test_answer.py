@@ -243,6 +243,13 @@ def test_a_quote_that_differs_only_in_whitespace_verifies():
     assert answered.citations[0].quote_verified is True
 
 
+def test_an_empty_quote_does_not_verify():
+    answered, _, _ = ask(draft(citations=[Citation(chunk_id=61, quote="   ")]))
+
+    (cited,) = answered.citations
+    assert cited.quote_verified is False, "an empty span is in every text; it is not evidence"
+
+
 def test_an_invented_quote_does_not_verify():
     answered, _, _ = ask(
         draft(

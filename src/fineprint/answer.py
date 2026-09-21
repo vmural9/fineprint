@@ -175,6 +175,9 @@ def check_citations(
     The kept ones get their pages from the retrieved row and a `quote_verified` flag from
     looking for the quote in that row's text. The dropped ones are only counted: a citation
     for an excerpt the model was never shown says nothing about the handbook.
+
+    An empty quote never verifies. `"" in text` is true for every text, so without the emptiness
+    check a citation carrying no evidence at all would be published as verified.
     """
     by_id = {chunk.chunk_id: chunk for chunk in chunks}
     kept: list[CitedChunk] = []
@@ -184,14 +187,14 @@ def check_citations(
         if chunk is None:
             dropped += 1
             continue
+        quote = collapse_whitespace(citation.quote)
         kept.append(
             CitedChunk(
                 chunk_id=chunk.chunk_id,
                 page_start=chunk.page_start,
                 page_end=chunk.page_end,
                 quote=citation.quote,
-                quote_verified=collapse_whitespace(citation.quote)
-                in collapse_whitespace(chunk.text),
+                quote_verified=bool(quote) and quote in collapse_whitespace(chunk.text),
             )
         )
     return kept, dropped

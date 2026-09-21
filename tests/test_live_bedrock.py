@@ -3,10 +3,11 @@
 Everything else in the suite runs offline. These carry the `live` marker, so a plain
 `uv run pytest` never reaches AWS; run them deliberately with
 
-    AWS_PROFILE=merlion-brands AWS_REGION=us-west-2 uv run pytest -m live -q
+    AWS_PROFILE=<your-aws-profile> AWS_REGION=us-west-2 uv run pytest -m live -q
 
-They cost a few cents. `DraftAnswer` is repeated here rather than imported because it belongs
-to `fineprint.answer`, which task 7 adds.
+They cost a few cents. `DraftAnswer` is repeated here rather than imported from
+`fineprint.answer` so that this file tests the provider against a schema of its own: a change to
+the service's answer model cannot silently change what the live test asserts.
 """
 
 from typing import Literal
@@ -37,7 +38,7 @@ class DraftAnswer(BaseModel):
 def settings() -> Settings:
     """Settings for the real Bedrock models, skipping when no AWS credentials are around."""
     if boto3.session.Session().get_credentials() is None:
-        pytest.skip("no AWS credentials: run with AWS_PROFILE=merlion-brands AWS_REGION=us-west-2")
+        pytest.skip("no AWS credentials: run with AWS_PROFILE=<your-profile> AWS_REGION=us-west-2")
     return Settings()
 
 
