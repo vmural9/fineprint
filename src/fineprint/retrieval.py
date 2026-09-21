@@ -148,7 +148,9 @@ class Retriever:
         """The `documents.id` of the configured edition, looked up once and remembered.
 
         Resolved on first use rather than in `__init__` so that building a `Retriever` never
-        touches the database, which keeps the API's startup and the tests simple.
+        touches the database, which keeps the API's startup and the tests simple. It is kept
+        for the life of the object, so a long-running process that re-ingests the edition
+        underneath itself needs a restart to see the new row.
         """
         if self._document_id is None:
             self._document_id = self._load_document_id()
