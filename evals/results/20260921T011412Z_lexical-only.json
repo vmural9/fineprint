@@ -1,0 +1,2947 @@
+{
+  "run_id": "20260921T011412Z_lexical-only",
+  "created_at": "2026-09-21T01:14:12Z",
+  "git": {
+    "commit": "b049a28101bd54882ddc1a9b5f642eaf7ae7c4f7",
+    "dirty": false
+  },
+  "config": {
+    "name": "lexical-only",
+    "mode": "lexical",
+    "chunk_set": "fixed-220w",
+    "top_k": 5,
+    "candidates": 20,
+    "rrf_k": 60,
+    "embedding_model": "amazon.titan-embed-text-v2:0",
+    "llm_model": null
+  },
+  "corpus": {
+    "edition": 2026,
+    "sha256": "d7a341bc3d2d3dab59af746a0875752761e6c2f2dc107d95e9078a23933513d6"
+  },
+  "golden_set": {
+    "sha256": "42f42f270a06810d055e7899573d4561fd21609a6d55b3717c2da53a7a858b05",
+    "count": 40
+  },
+  "questions": [
+    {
+      "id": "q001",
+      "question": "My mom just turned 65 and is signing up for Medicare. How much will her Part B premium be each month in 2026, and is there anything that could make it higher?",
+      "type": "lookup",
+      "category": "costs",
+      "difficulty": "easy",
+      "answerable": true,
+      "expected_pages": [
+        23
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 28,
+          "page_start": 16,
+          "page_end": 17,
+          "rank": 1,
+          "score": 4.8,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 42,
+          "page_start": 22,
+          "page_end": 23,
+          "rank": 2,
+          "score": 4.3,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 44,
+          "page_start": 23,
+          "page_end": 23,
+          "rank": 3,
+          "score": 4.2000003,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 24,
+          "page_start": 15,
+          "page_end": 15,
+          "rank": 4,
+          "score": 3.9,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 29,
+          "page_start": 17,
+          "page_end": 17,
+          "rank": 5,
+          "score": 3.9,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 0.5,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q002",
+      "question": "Dad has Original Medicare and no other insurance. He spent 5 days in the hospital and then went straight into a skilled nursing facility for 30 days. What will he owe for that in 2026?",
+      "type": "multi_section",
+      "category": "costs",
+      "difficulty": "hard",
+      "answerable": true,
+      "expected_pages": [
+        27,
+        29
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 56,
+          "page_start": 28,
+          "page_end": 29,
+          "rank": 1,
+          "score": 3.7,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 2,
+          "score": 3.4,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 124,
+          "page_start": 56,
+          "page_end": 57,
+          "rank": 3,
+          "score": 3.2,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 254,
+          "page_start": 117,
+          "page_end": 119,
+          "rank": 4,
+          "score": 2.9,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 14,
+          "page_start": 9,
+          "page_end": 10,
+          "rank": 5,
+          "score": 2.7,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 0.5,
+        "reciprocal_rank": 1.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q003",
+      "question": "What are the 2026 income and resource limits for qualifying for Extra Help with Medicare drug costs?",
+      "type": "unanswerable",
+      "category": "costs",
+      "difficulty": "medium",
+      "answerable": false,
+      "expected_pages": [],
+      "retrieved": [
+        {
+          "chunk_id": 207,
+          "page_start": 92,
+          "page_end": 92,
+          "rank": 1,
+          "score": 3.8,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 211,
+          "page_start": 93,
+          "page_end": 94,
+          "rank": 2,
+          "score": 3.4,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 173,
+          "page_start": 79,
+          "page_end": 79,
+          "rank": 3,
+          "score": 3.1000001,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 208,
+          "page_start": 92,
+          "page_end": 93,
+          "rank": 4,
+          "score": 3.1000001,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 209,
+          "page_start": 93,
+          "page_end": 93,
+          "rank": 5,
+          "score": 3.1000001,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": null,
+        "page_recall": null,
+        "reciprocal_rank": null,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q004",
+      "question": "My mother is having trouble hearing. Does Original Medicare pay for hearing aids, or for the exam to fit them?",
+      "type": "lookup",
+      "category": "coverage",
+      "difficulty": "easy",
+      "answerable": true,
+      "expected_pages": [
+        42
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 1,
+          "score": 3.0,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 89,
+          "page_start": 42,
+          "page_end": 42,
+          "rank": 2,
+          "score": 2.4,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 2,
+          "page_start": 2,
+          "page_end": 3,
+          "rank": 3,
+          "score": 2.2,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 156,
+          "page_start": 71,
+          "page_end": 72,
+          "rank": 4,
+          "score": 2.2,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 121,
+          "page_start": 55,
+          "page_end": 55,
+          "rank": 5,
+          "score": 2.1000001,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 0.5,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q005",
+      "question": "I'm 68 and still working at a company with 12 employees, and I have the company health plan as well as Medicare. Which one pays my medical bills first?",
+      "type": "table",
+      "category": "coverage",
+      "difficulty": "medium",
+      "answerable": true,
+      "expected_pages": [
+        21
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 1,
+          "score": 4.9,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 39,
+          "page_start": 21,
+          "page_end": 21,
+          "rank": 2,
+          "score": 4.4,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 173,
+          "page_start": 79,
+          "page_end": 79,
+          "rank": 3,
+          "score": 3.7,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 38,
+          "page_start": 20,
+          "page_end": 21,
+          "rank": 4,
+          "score": 3.5,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 134,
+          "page_start": 61,
+          "page_end": 62,
+          "rank": 5,
+          "score": 3.4,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 0.5,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q006",
+      "question": "My mom turns 65 on March 12. When can she sign up for Medicare without paying a penalty, and when would her coverage start?",
+      "type": "lookup",
+      "category": "enrollment",
+      "difficulty": "easy",
+      "answerable": true,
+      "expected_pages": [
+        17
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 29,
+          "page_start": 17,
+          "page_end": 17,
+          "rank": 1,
+          "score": 2.8,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 155,
+          "page_start": 71,
+          "page_end": 71,
+          "rank": 2,
+          "score": 2.8,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 156,
+          "page_start": 71,
+          "page_end": 72,
+          "rank": 3,
+          "score": 2.8,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 185,
+          "page_start": 83,
+          "page_end": 84,
+          "rank": 4,
+          "score": 2.8,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 5,
+          "score": 2.8,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q007",
+      "question": "My husband is retiring in April and I'm 67 and covered by his employer's health plan. How long will I have to sign up for Part B, and does taking COBRA buy me more time?",
+      "type": "multi_section",
+      "category": "enrollment",
+      "difficulty": "medium",
+      "answerable": true,
+      "expected_pages": [
+        17,
+        18
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 173,
+          "page_start": 79,
+          "page_end": 79,
+          "rank": 1,
+          "score": 3.3,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 48,
+          "page_start": 25,
+          "page_end": 25,
+          "rank": 2,
+          "score": 3.2,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 159,
+          "page_start": 73,
+          "page_end": 73,
+          "rank": 3,
+          "score": 3.2,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 31,
+          "page_start": 17,
+          "page_end": 18,
+          "rank": 4,
+          "score": 3.1000001,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 44,
+          "page_start": 23,
+          "page_end": 23,
+          "rank": 5,
+          "score": 3.1000001,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 0.25,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q008",
+      "question": "I turn 65 on August 14, I'm still working, and I put money into a health savings account through my job. If I sign up for Medicare during my Initial Enrollment Period, when does my last HSA contribution have to be?",
+      "type": "table",
+      "category": "enrollment",
+      "difficulty": "hard",
+      "answerable": true,
+      "expected_pages": [
+        20
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 37,
+          "page_start": 20,
+          "page_end": 20,
+          "rank": 1,
+          "score": 3.8,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 29,
+          "page_start": 17,
+          "page_end": 17,
+          "rank": 2,
+          "score": 3.7,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 28,
+          "page_start": 16,
+          "page_end": 17,
+          "rank": 3,
+          "score": 3.2,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 4,
+          "score": 3.1000001,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 33,
+          "page_start": 18,
+          "page_end": 19,
+          "rank": 5,
+          "score": 3.0,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q009",
+      "question": "Mom has Original Medicare and nothing else. Is there a cap on what she can be charged out of pocket in a year, and would a Medicare Advantage plan cap it?",
+      "type": "table",
+      "category": "original_vs_advantage",
+      "difficulty": "medium",
+      "answerable": true,
+      "expected_pages": [
+        11
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 1,
+          "score": 4.7000003,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 156,
+          "page_start": 71,
+          "page_end": 72,
+          "rank": 2,
+          "score": 4.5,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 139,
+          "page_start": 63,
+          "page_end": 64,
+          "rank": 3,
+          "score": 4.3,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 134,
+          "page_start": 61,
+          "page_end": 62,
+          "rank": 4,
+          "score": 4.0,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 157,
+          "page_start": 72,
+          "page_end": 72,
+          "rank": 5,
+          "score": 4.0,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 0.0,
+        "page_recall": 0.0,
+        "reciprocal_rank": 0.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q010",
+      "question": "My mother found a Medicare Advantage plan with a $0 monthly premium. Does that mean she would pay nothing each month for her Medicare?",
+      "type": "lookup",
+      "category": "original_vs_advantage",
+      "difficulty": "easy",
+      "answerable": true,
+      "expected_pages": [
+        65
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 142,
+          "page_start": 64,
+          "page_end": 65,
+          "rank": 1,
+          "score": 5.0,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 2,
+          "score": 4.3,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 156,
+          "page_start": 71,
+          "page_end": 72,
+          "rank": 3,
+          "score": 4.0,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 139,
+          "page_start": 63,
+          "page_end": 64,
+          "rank": 4,
+          "score": 3.9,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 17,
+          "page_start": 11,
+          "page_end": 11,
+          "rank": 5,
+          "score": 3.8,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q011",
+      "question": "My father takes several expensive prescriptions. Is there any cap on what he'll have to pay for his drugs in 2026?",
+      "type": "lookup",
+      "category": "part_d",
+      "difficulty": "easy",
+      "answerable": true,
+      "expected_pages": [
+        83
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 182,
+          "page_start": 82,
+          "page_end": 83,
+          "rank": 1,
+          "score": 2.1000001,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 83,
+          "page_start": 39,
+          "page_end": 40,
+          "rank": 2,
+          "score": 2.0,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 172,
+          "page_start": 78,
+          "page_end": 79,
+          "rank": 3,
+          "score": 2.0,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 185,
+          "page_start": 83,
+          "page_end": 84,
+          "rank": 4,
+          "score": 2.0,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 190,
+          "page_start": 85,
+          "page_end": 85,
+          "rank": 5,
+          "score": 2.0,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q012",
+      "question": "Does Medicare drug coverage pay for Eliquis? My mom wants to know before she picks a plan.",
+      "type": "unanswerable",
+      "category": "part_d",
+      "difficulty": "medium",
+      "answerable": false,
+      "expected_pages": [],
+      "retrieved": [
+        {
+          "chunk_id": 173,
+          "page_start": 79,
+          "page_end": 79,
+          "rank": 1,
+          "score": 5.5,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 140,
+          "page_start": 64,
+          "page_end": 64,
+          "rank": 2,
+          "score": 4.9,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 174,
+          "page_start": 79,
+          "page_end": 80,
+          "rank": 3,
+          "score": 4.6,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 4,
+          "score": 4.6,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 177,
+          "page_start": 80,
+          "page_end": 81,
+          "rank": 5,
+          "score": 4.1,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": null,
+        "page_recall": null,
+        "reciprocal_rank": null,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q013",
+      "question": "Dad is 68, has had Medicare since he was 65 and never joined a drug plan because he takes no medication. If he joins one now, will he be charged a penalty, and how is it worked out?",
+      "type": "multi_section",
+      "category": "part_d",
+      "difficulty": "hard",
+      "answerable": true,
+      "expected_pages": [
+        83,
+        84
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 173,
+          "page_start": 79,
+          "page_end": 79,
+          "rank": 1,
+          "score": 5.2000003,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 140,
+          "page_start": 64,
+          "page_end": 64,
+          "rank": 2,
+          "score": 4.3,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 3,
+          "score": 4.2000003,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 156,
+          "page_start": 71,
+          "page_end": 72,
+          "rank": 4,
+          "score": 4.1,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 157,
+          "page_start": 72,
+          "page_end": 72,
+          "rank": 5,
+          "score": 4.1,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 0.5,
+        "reciprocal_rank": 1.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q014",
+      "question": "Dad is comparing Medigap Plan K and Plan L. What is the most each one would let him pay out of pocket in 2026, and how much of his costs do they cover?",
+      "type": "table",
+      "category": "medigap",
+      "difficulty": "hard",
+      "answerable": true,
+      "expected_pages": [
+        76
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 17,
+          "page_start": 11,
+          "page_end": 11,
+          "rank": 1,
+          "score": 3.1000001,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 182,
+          "page_start": 82,
+          "page_end": 83,
+          "rank": 2,
+          "score": 3.1000001,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 142,
+          "page_start": 64,
+          "page_end": 65,
+          "rank": 3,
+          "score": 2.9,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 183,
+          "page_start": 83,
+          "page_end": 83,
+          "rank": 4,
+          "score": 2.6000001,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 166,
+          "page_start": 76,
+          "page_end": 77,
+          "rank": 5,
+          "score": 2.4,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 0.2,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q015",
+      "question": "When is the best time for my dad to buy a Medigap policy, and what happens if he waits?",
+      "type": "lookup",
+      "category": "medigap",
+      "difficulty": "easy",
+      "answerable": true,
+      "expected_pages": [
+        77
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 168,
+          "page_start": 77,
+          "page_end": 77,
+          "rank": 1,
+          "score": 2.7,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 170,
+          "page_start": 78,
+          "page_end": 78,
+          "rank": 2,
+          "score": 2.4,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 169,
+          "page_start": 77,
+          "page_end": 78,
+          "rank": 3,
+          "score": 2.0,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 167,
+          "page_start": 76,
+          "page_end": 77,
+          "rank": 4,
+          "score": 1.8000001,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 171,
+          "page_start": 78,
+          "page_end": 78,
+          "rank": 5,
+          "score": 1.7,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q016",
+      "question": "Dad signed up for Part B this past January. His doctor's office wants to book him for his annual wellness visit. Is he eligible for that yet, and what will it cost him?",
+      "type": "multi_section",
+      "category": "coverage",
+      "difficulty": "hard",
+      "answerable": true,
+      "expected_pages": [
+        54,
+        55
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 24,
+          "page_start": 15,
+          "page_end": 15,
+          "rank": 1,
+          "score": 3.3,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 44,
+          "page_start": 23,
+          "page_end": 23,
+          "rank": 2,
+          "score": 3.1000001,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 42,
+          "page_start": 22,
+          "page_end": 23,
+          "rank": 3,
+          "score": 2.7,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 28,
+          "page_start": 16,
+          "page_end": 17,
+          "rank": 4,
+          "score": 2.5,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 26,
+          "page_start": 16,
+          "page_end": 16,
+          "rank": 5,
+          "score": 2.4,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 0.0,
+        "page_recall": 0.0,
+        "reciprocal_rank": 0.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q017",
+      "question": "Mom's doctor wants to set up home health care after her hip surgery. What will Medicare charge her for it, and does she have to be bedridden to qualify?",
+      "type": "lookup",
+      "category": "coverage",
+      "difficulty": "easy",
+      "answerable": true,
+      "expected_pages": [
+        43
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 92,
+          "page_start": 43,
+          "page_end": 43,
+          "rank": 1,
+          "score": 3.6000001,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 131,
+          "page_start": 60,
+          "page_end": 60,
+          "rank": 2,
+          "score": 3.5,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 244,
+          "page_start": 109,
+          "page_end": 110,
+          "rank": 3,
+          "score": 3.3,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 247,
+          "page_start": 111,
+          "page_end": 111,
+          "rank": 4,
+          "score": 2.8,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 5,
+          "score": 2.8,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q018",
+      "question": "Mom's cancer is terminal and her doctor brought up hospice. Who has to sign off before Medicare will cover it, and what would she have to pay?",
+      "type": "multi_section",
+      "category": "coverage",
+      "difficulty": "hard",
+      "answerable": true,
+      "expected_pages": [
+        26,
+        27
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 1,
+          "score": 2.7,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 51,
+          "page_start": 26,
+          "page_end": 27,
+          "rank": 2,
+          "score": 2.4,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 59,
+          "page_start": 30,
+          "page_end": 30,
+          "rank": 3,
+          "score": 2.4,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 70,
+          "page_start": 34,
+          "page_end": 34,
+          "rank": 4,
+          "score": 2.4,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 96,
+          "page_start": 44,
+          "page_end": 45,
+          "rank": 5,
+          "score": 2.4,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 0.5,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q019",
+      "question": "Dad needs a wheelchair to get around the house. Will Medicare buy him one, and what does he pay?",
+      "type": "lookup",
+      "category": "coverage",
+      "difficulty": "easy",
+      "answerable": true,
+      "expected_pages": [
+        40
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 1,
+          "score": 2.6000001,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 2,
+          "page_start": 2,
+          "page_end": 3,
+          "rank": 2,
+          "score": 2.5,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 133,
+          "page_start": 61,
+          "page_end": 61,
+          "rank": 3,
+          "score": 2.4,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 19,
+          "page_start": 12,
+          "page_end": 13,
+          "rank": 4,
+          "score": 2.3,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 17,
+          "page_start": 11,
+          "page_end": 11,
+          "rank": 5,
+          "score": 2.2,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 0.0,
+        "page_recall": 0.0,
+        "reciprocal_rank": 0.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q020",
+      "question": "Mom has been badly depressed since Dad died and wants to see a therapist. Does Medicare cover that, and what will she pay?",
+      "type": "lookup",
+      "category": "coverage",
+      "difficulty": "easy",
+      "answerable": true,
+      "expected_pages": [
+        46
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 1,
+          "score": 2.7,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 17,
+          "page_start": 11,
+          "page_end": 11,
+          "rank": 2,
+          "score": 2.3,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 19,
+          "page_start": 12,
+          "page_end": 13,
+          "rank": 3,
+          "score": 2.2,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 2,
+          "page_start": 2,
+          "page_end": 3,
+          "rank": 4,
+          "score": 2.1000001,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 18,
+          "page_start": 11,
+          "page_end": 12,
+          "rank": 5,
+          "score": 2.1000001,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 0.0,
+        "page_recall": 0.0,
+        "reciprocal_rank": 0.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q021",
+      "question": "My parents have Original Medicare. They're going to Portugal in June and to Puerto Rico in October. Would Medicare cover them if one of them ended up in the hospital on either trip?",
+      "type": "lookup",
+      "category": "coverage",
+      "difficulty": "medium",
+      "answerable": true,
+      "expected_pages": [
+        53
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 1,
+          "score": 3.4,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 134,
+          "page_start": 61,
+          "page_end": 62,
+          "rank": 2,
+          "score": 3.1000001,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 19,
+          "page_start": 12,
+          "page_end": 13,
+          "rank": 3,
+          "score": 2.9,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 48,
+          "page_start": 25,
+          "page_end": 25,
+          "rank": 4,
+          "score": 2.8,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 124,
+          "page_start": 56,
+          "page_end": 57,
+          "rank": 5,
+          "score": 2.8,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 0.0,
+        "page_recall": 0.0,
+        "reciprocal_rank": 0.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q022",
+      "question": "Mom spent three nights in the hospital but the billing office says she was under observation the whole time, never admitted. She needs a skilled nursing facility now. Will Part A pay for it?",
+      "type": "multi_section",
+      "category": "coverage",
+      "difficulty": "hard",
+      "answerable": true,
+      "expected_pages": [
+        28,
+        29
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 56,
+          "page_start": 28,
+          "page_end": 29,
+          "rank": 1,
+          "score": 3.2,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 57,
+          "page_start": 29,
+          "page_end": 29,
+          "rank": 2,
+          "score": 2.9,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 260,
+          "page_start": 122,
+          "page_end": 123,
+          "rank": 3,
+          "score": 2.5,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 55,
+          "page_start": 28,
+          "page_end": 28,
+          "rank": 4,
+          "score": 2.4,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 58,
+          "page_start": 29,
+          "page_end": 30,
+          "rank": 5,
+          "score": 2.3,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q023",
+      "question": "Dad has been an inpatient in the hospital for 80 days straight in the same benefit period. What is he paying per day now, and what happens if he's still there past 90 days?",
+      "type": "lookup",
+      "category": "costs",
+      "difficulty": "medium",
+      "answerable": true,
+      "expected_pages": [
+        27
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 53,
+          "page_start": 27,
+          "page_end": 28,
+          "rank": 1,
+          "score": 3.7,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 54,
+          "page_start": 27,
+          "page_end": 28,
+          "rank": 2,
+          "score": 2.7,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 57,
+          "page_start": 29,
+          "page_end": 29,
+          "rank": 3,
+          "score": 2.7,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 58,
+          "page_start": 29,
+          "page_end": 30,
+          "rank": 4,
+          "score": 2.7,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 254,
+          "page_start": 117,
+          "page_end": 119,
+          "rank": 5,
+          "score": 2.6000001,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q024",
+      "question": "My father moved to the U.S. at 58 and has only about 6 years of work here. Does he have to pay for Part A, how much in 2026, and what happens if he puts it off?",
+      "type": "lookup",
+      "category": "costs",
+      "difficulty": "medium",
+      "answerable": true,
+      "expected_pages": [
+        22
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 42,
+          "page_start": 22,
+          "page_end": 23,
+          "rank": 1,
+          "score": 2.7,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 17,
+          "page_start": 11,
+          "page_end": 11,
+          "rank": 2,
+          "score": 2.2,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 41,
+          "page_start": 22,
+          "page_end": 22,
+          "rank": 3,
+          "score": 1.8000001,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 43,
+          "page_start": 23,
+          "page_end": 23,
+          "rank": 4,
+          "score": 1.8000001,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 166,
+          "page_start": 76,
+          "page_end": 77,
+          "rank": 5,
+          "score": 1.7,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q025",
+      "question": "Mom's only income is her Social Security check and she's struggling to pay her Medicare premiums. Is there a program that would help, and would it do anything for her drug costs?",
+      "type": "multi_section",
+      "category": "costs",
+      "difficulty": "hard",
+      "answerable": true,
+      "expected_pages": [
+        91,
+        92
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 17,
+          "page_start": 11,
+          "page_end": 11,
+          "rank": 1,
+          "score": 3.5,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 173,
+          "page_start": 79,
+          "page_end": 79,
+          "rank": 2,
+          "score": 3.3,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 211,
+          "page_start": 93,
+          "page_end": 94,
+          "rank": 3,
+          "score": 3.3,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 4,
+          "score": 3.1000001,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 142,
+          "page_start": 64,
+          "page_end": 65,
+          "rank": 5,
+          "score": 3.0,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 0.0,
+        "page_recall": 0.0,
+        "reciprocal_rank": 0.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q026",
+      "question": "Dad is having a hernia repair next month in the hospital outpatient department. Exactly how many dollars will he owe for it?",
+      "type": "unanswerable",
+      "category": "costs",
+      "difficulty": "medium",
+      "answerable": false,
+      "expected_pages": [],
+      "retrieved": [
+        {
+          "chunk_id": 102,
+          "page_start": 47,
+          "page_end": 47,
+          "rank": 1,
+          "score": 2.0,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 55,
+          "page_start": 28,
+          "page_end": 28,
+          "rank": 2,
+          "score": 1.8000001,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 29,
+          "page_start": 17,
+          "page_end": 17,
+          "rank": 3,
+          "score": 1.5,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 103,
+          "page_start": 47,
+          "page_end": 48,
+          "rank": 4,
+          "score": 1.4,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 28,
+          "page_start": 16,
+          "page_end": 17,
+          "rank": 5,
+          "score": 1.3000001,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": null,
+        "page_recall": null,
+        "reciprocal_rank": null,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q027",
+      "question": "Mom is in a Medicare Advantage plan and wants to move to a different one for next year. When can she make that change, and when would the new plan kick in?",
+      "type": "table",
+      "category": "enrollment",
+      "difficulty": "easy",
+      "answerable": true,
+      "expected_pages": [
+        71
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 156,
+          "page_start": 71,
+          "page_end": 72,
+          "rank": 1,
+          "score": 4.8,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 139,
+          "page_start": 63,
+          "page_end": 64,
+          "rank": 2,
+          "score": 4.4,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 20,
+          "page_start": 13,
+          "page_end": 13,
+          "rank": 3,
+          "score": 4.3,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 157,
+          "page_start": 72,
+          "page_end": 72,
+          "rank": 4,
+          "score": 4.3,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 5,
+          "score": 4.1,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q028",
+      "question": "Dad turned 65 three years ago and has Part A, but he never signed up for Part B and has no other coverage. He's signing up for Part B this February. Can he pick a Medicare Advantage plan at the same time?",
+      "type": "table",
+      "category": "enrollment",
+      "difficulty": "medium",
+      "answerable": true,
+      "expected_pages": [
+        71
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 173,
+          "page_start": 79,
+          "page_end": 79,
+          "rank": 1,
+          "score": 5.7000003,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 159,
+          "page_start": 73,
+          "page_end": 73,
+          "rank": 2,
+          "score": 5.3,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 3,
+          "score": 5.3,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 133,
+          "page_start": 61,
+          "page_end": 61,
+          "rank": 4,
+          "score": 4.9,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 139,
+          "page_start": 63,
+          "page_end": 64,
+          "rank": 5,
+          "score": 4.7000003,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 0.0,
+        "page_recall": 0.0,
+        "reciprocal_rank": 0.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q029",
+      "question": "Mom's house burned in a wildfire and in the chaos she missed her Medicare sign-up window. Is there any way for her to enroll now, and how soon after that could she get a drug plan?",
+      "type": "multi_section",
+      "category": "enrollment",
+      "difficulty": "hard",
+      "answerable": true,
+      "expected_pages": [
+        18,
+        80
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 173,
+          "page_start": 79,
+          "page_end": 79,
+          "rank": 1,
+          "score": 4.9,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 2,
+          "score": 4.3,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 140,
+          "page_start": 64,
+          "page_end": 64,
+          "rank": 3,
+          "score": 4.1,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 156,
+          "page_start": 71,
+          "page_end": 72,
+          "rank": 4,
+          "score": 4.1,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 157,
+          "page_start": 72,
+          "page_end": 72,
+          "rank": 5,
+          "score": 3.8,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 0.0,
+        "page_recall": 0.0,
+        "reciprocal_rank": 0.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q030",
+      "question": "Mom joined a Medicare Advantage plan in January and already regrets it. It's now February. Can she move to a different plan, and how many times can she change?",
+      "type": "table",
+      "category": "original_vs_advantage",
+      "difficulty": "medium",
+      "answerable": true,
+      "expected_pages": [
+        72
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 156,
+          "page_start": 71,
+          "page_end": 72,
+          "rank": 1,
+          "score": 4.9,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 139,
+          "page_start": 63,
+          "page_end": 64,
+          "rank": 2,
+          "score": 4.8,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 157,
+          "page_start": 72,
+          "page_end": 72,
+          "rank": 3,
+          "score": 4.2000003,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 173,
+          "page_start": 79,
+          "page_end": 79,
+          "rank": 4,
+          "score": 4.2000003,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 5,
+          "score": 4.2000003,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q031",
+      "question": "Mom sees a cardiologist regularly and has a stress test every year. If she moves from Original Medicare to a Medicare Advantage plan, will she suddenly need referrals and pre-approvals she doesn't need now?",
+      "type": "table",
+      "category": "original_vs_advantage",
+      "difficulty": "easy",
+      "answerable": true,
+      "expected_pages": [
+        11,
+        12
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 1,
+          "score": 4.9,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 133,
+          "page_start": 61,
+          "page_end": 61,
+          "rank": 2,
+          "score": 4.5,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 156,
+          "page_start": 71,
+          "page_end": 72,
+          "rank": 3,
+          "score": 4.5,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 139,
+          "page_start": 63,
+          "page_end": 64,
+          "rank": 4,
+          "score": 4.4,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 134,
+          "page_start": 61,
+          "page_end": 62,
+          "rank": 5,
+          "score": 4.2000003,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 0.0,
+        "page_recall": 0.0,
+        "reciprocal_rank": 0.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q032",
+      "question": "Mom is down to two Medicare Advantage plans, an HMO and a PPO. Would she have to pick a primary care doctor or get referrals, and what happens if she sees a doctor outside the network?",
+      "type": "multi_section",
+      "category": "original_vs_advantage",
+      "difficulty": "hard",
+      "answerable": true,
+      "expected_pages": [
+        66,
+        68
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 146,
+          "page_start": 66,
+          "page_end": 66,
+          "rank": 1,
+          "score": 5.0,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 133,
+          "page_start": 61,
+          "page_end": 61,
+          "rank": 2,
+          "score": 4.5,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 147,
+          "page_start": 66,
+          "page_end": 67,
+          "rank": 3,
+          "score": 4.3,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 134,
+          "page_start": 61,
+          "page_end": 62,
+          "rank": 4,
+          "score": 4.2000003,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 139,
+          "page_start": 63,
+          "page_end": 64,
+          "rank": 5,
+          "score": 4.2000003,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 0.5,
+        "reciprocal_rank": 1.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q033",
+      "question": "How much is the monthly premium for the Medicare Advantage HMO plan my mother wants to join in Cook County, Illinois?",
+      "type": "unanswerable",
+      "category": "original_vs_advantage",
+      "difficulty": "medium",
+      "answerable": false,
+      "expected_pages": [],
+      "retrieved": [
+        {
+          "chunk_id": 139,
+          "page_start": 63,
+          "page_end": 64,
+          "rank": 1,
+          "score": 4.6,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 142,
+          "page_start": 64,
+          "page_end": 65,
+          "rank": 2,
+          "score": 4.6,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 156,
+          "page_start": 71,
+          "page_end": 72,
+          "rank": 3,
+          "score": 4.3,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 173,
+          "page_start": 79,
+          "page_end": 79,
+          "rank": 4,
+          "score": 4.3,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 158,
+          "page_start": 72,
+          "page_end": 73,
+          "rank": 5,
+          "score": 4.1,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": null,
+        "page_recall": null,
+        "reciprocal_rank": null,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q034",
+      "question": "Mom has a high income and gets her drug coverage through a Medicare Advantage plan. Does she still owe the Part D extra charge, and does she pay it to the plan?",
+      "type": "lookup",
+      "category": "part_d",
+      "difficulty": "medium",
+      "answerable": true,
+      "expected_pages": [
+        82
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 173,
+          "page_start": 79,
+          "page_end": 79,
+          "rank": 1,
+          "score": 7.3,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 140,
+          "page_start": 64,
+          "page_end": 64,
+          "rank": 2,
+          "score": 5.9,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 3,
+          "score": 5.9,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 159,
+          "page_start": 73,
+          "page_end": 73,
+          "rank": 4,
+          "score": 5.7000003,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 133,
+          "page_start": 61,
+          "page_end": 61,
+          "rank": 5,
+          "score": 5.4,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 0.0,
+        "page_recall": 0.0,
+        "reciprocal_rank": 0.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q035",
+      "question": "Mom takes insulin every day. Is there a limit on what her Medicare drug plan can charge her for it, and does she have to meet her deductible first?",
+      "type": "lookup",
+      "category": "part_d",
+      "difficulty": "easy",
+      "answerable": true,
+      "expected_pages": [
+        88
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 173,
+          "page_start": 79,
+          "page_end": 79,
+          "rank": 1,
+          "score": 4.5,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 2,
+          "score": 4.0,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 140,
+          "page_start": 64,
+          "page_end": 64,
+          "rank": 3,
+          "score": 3.8,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 156,
+          "page_start": 71,
+          "page_end": 72,
+          "rank": 4,
+          "score": 3.6000001,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 157,
+          "page_start": 72,
+          "page_end": 72,
+          "rank": 5,
+          "score": 3.5,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 0.0,
+        "page_recall": 0.0,
+        "reciprocal_rank": 0.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q036",
+      "question": "Dad's drug plan puts his medicine on an expensive tier and his doctor says the cheaper ones won't work for him. Can he ask the plan to charge him less, and how does that work?",
+      "type": "multi_section",
+      "category": "part_d",
+      "difficulty": "hard",
+      "answerable": true,
+      "expected_pages": [
+        85,
+        100
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 173,
+          "page_start": 79,
+          "page_end": 79,
+          "rank": 1,
+          "score": 2.9,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 190,
+          "page_start": 85,
+          "page_end": 85,
+          "rank": 2,
+          "score": 2.9,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 222,
+          "page_start": 99,
+          "page_end": 100,
+          "rank": 3,
+          "score": 2.9,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 140,
+          "page_start": 64,
+          "page_end": 64,
+          "rank": 4,
+          "score": 2.5,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 146,
+          "page_start": 66,
+          "page_end": 66,
+          "rank": 5,
+          "score": 2.4,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 0.5,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q037",
+      "question": "What's the most a Medicare drug plan is allowed to charge for its yearly deductible in 2026?",
+      "type": "unanswerable",
+      "category": "part_d",
+      "difficulty": "hard",
+      "answerable": false,
+      "expected_pages": [],
+      "retrieved": [
+        {
+          "chunk_id": 173,
+          "page_start": 79,
+          "page_end": 79,
+          "rank": 1,
+          "score": 4.5,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 2,
+          "score": 4.0,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 140,
+          "page_start": 64,
+          "page_end": 64,
+          "rank": 3,
+          "score": 3.7,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 156,
+          "page_start": 71,
+          "page_end": 72,
+          "rank": 4,
+          "score": 3.6000001,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 157,
+          "page_start": 72,
+          "page_end": 72,
+          "rank": 5,
+          "score": 3.6000001,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": null,
+        "page_recall": null,
+        "reciprocal_rank": null,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q038",
+      "question": "Dad is choosing between Medigap Plan N and a high-deductible Plan G. What extra out-of-pocket costs does each of those carry in 2026?",
+      "type": "table",
+      "category": "medigap",
+      "difficulty": "hard",
+      "answerable": true,
+      "expected_pages": [
+        76
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 166,
+          "page_start": 76,
+          "page_end": 77,
+          "rank": 1,
+          "score": 2.7,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 142,
+          "page_start": 64,
+          "page_end": 65,
+          "rank": 2,
+          "score": 2.4,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 182,
+          "page_start": 82,
+          "page_end": 83,
+          "rank": 3,
+          "score": 2.4,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 183,
+          "page_start": 83,
+          "page_end": 83,
+          "rank": 4,
+          "score": 2.4,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 17,
+          "page_start": 11,
+          "page_end": 11,
+          "rank": 5,
+          "score": 2.3,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q039",
+      "question": "Dad has had a Medigap policy for years but wants to try a Medicare Advantage plan. If he hates it, can he get his Medigap policy back?",
+      "type": "lookup",
+      "category": "medigap",
+      "difficulty": "medium",
+      "answerable": true,
+      "expected_pages": [
+        78
+      ],
+      "retrieved": [
+        {
+          "chunk_id": 170,
+          "page_start": 78,
+          "page_end": 78,
+          "rank": 1,
+          "score": 5.8,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 142,
+          "page_start": 64,
+          "page_end": 65,
+          "rank": 2,
+          "score": 4.5,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 156,
+          "page_start": 71,
+          "page_end": 72,
+          "rank": 3,
+          "score": 4.3,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 258,
+          "page_start": 121,
+          "page_end": 121,
+          "rank": 4,
+          "score": 4.3,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 133,
+          "page_start": 61,
+          "page_end": 61,
+          "rank": 5,
+          "score": 4.2000003,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": 1.0,
+        "page_recall": 1.0,
+        "reciprocal_rank": 1.0,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    },
+    {
+      "id": "q040",
+      "question": "How much would a Medigap Plan G policy cost my dad per month?",
+      "type": "unanswerable",
+      "category": "medigap",
+      "difficulty": "easy",
+      "answerable": false,
+      "expected_pages": [],
+      "retrieved": [
+        {
+          "chunk_id": 170,
+          "page_start": 78,
+          "page_end": 78,
+          "rank": 1,
+          "score": 3.2,
+          "lexical_rank": 1,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 142,
+          "page_start": 64,
+          "page_end": 65,
+          "rank": 2,
+          "score": 2.6000001,
+          "lexical_rank": 2,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 168,
+          "page_start": 77,
+          "page_end": 77,
+          "rank": 3,
+          "score": 2.4,
+          "lexical_rank": 3,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 169,
+          "page_start": 77,
+          "page_end": 78,
+          "rank": 4,
+          "score": 2.1000001,
+          "lexical_rank": 4,
+          "vector_rank": null
+        },
+        {
+          "chunk_id": 167,
+          "page_start": 76,
+          "page_end": 77,
+          "rank": 5,
+          "score": 2.0,
+          "lexical_rank": 5,
+          "vector_rank": null
+        }
+      ],
+      "metrics": {
+        "page_hit": null,
+        "page_recall": null,
+        "reciprocal_rank": null,
+        "cited_page_hit": null,
+        "abstention_correct": null
+      },
+      "answer": null,
+      "review": {
+        "verdict": null,
+        "note": "",
+        "reviewer": null,
+        "reviewed_at": null
+      },
+      "error": null
+    }
+  ]
+}
