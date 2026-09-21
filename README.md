@@ -23,17 +23,22 @@ code that produced them.
 
 ## Status
 
-Setup is complete: the Python project, a Postgres 16 container with pgvector, a pinned,
-hash-verified download of the handbook, and the first 15 golden-set questions. The build decisions
-for part 1 were settled on 2026-09-21 — among them that both model calls, the one that writes
-answers and the one that turns text into vectors, go to AWS Bedrock — and **part 1 is now being
-built.** There is no service to run and nothing to demo yet.
+**Part 1 is built and merged.** Ingestion, hybrid retrieval, cited answers, the HTTP service, the
+`fineprint` command, a golden set of 40 audited questions, and the eval tooling that produced the
+scoreboard below are all on `main`. Three retrieval configurations have been run against the real
+corpus and their results files are committed.
+
+Two things part 1 still owes. I have not yet graded the `hybrid` answers with
+`python -m evals.review`, so the scoreboard's **Manual pass** column is empty; and the walkthrough
+video has not been recorded. Until both are done there is no `part-1` tag.
+
+Part 2 has not started.
 
 ## The series
 
 | Part | What it adds | Status |
 |------|--------------|--------|
-| 1. RAG service | Ingestion into Postgres with pgvector, hybrid retrieval with reciprocal rank fusion, FastAPI `/ask` and `/search`, structured answers with cited pages, golden set v1, the first scoreboard | in progress |
+| 1. RAG service | Ingestion into Postgres with pgvector, hybrid retrieval with reciprocal rank fusion, FastAPI `/ask` and `/search`, structured answers with cited pages, golden set v1, the first scoreboard | built; manual review and video outstanding |
 | 2. Retrieval quality | RAGAS metrics on the golden set; fixed-size chunking against structure-aware chunking against a cross-encoder re-ranker, side by side | planned |
 | 3. Observability and agent | Langfuse tracing on every LLM and tool call; a two-tool agent over the retriever; provider retries, timeouts and fallback; cost and p95 latency | planned |
 | 4. Eval gate | Calibrated LLM-as-judge rubric, an adversarial slice, deterministic tool-call assertions, promptfoo in GitHub Actions with pass/fail thresholds | planned |
@@ -68,24 +73,237 @@ Generated at 2026-09-21 01:21 UTC.
 The secondary metrics and the breakdown by question type are in [evals/scoreboard.md](evals/scoreboard.md).
 <!-- scoreboard:end -->
 
-## Run it
+## Part 1 — the RAG service
 
-Prerequisites: [uv](https://docs.astral.sh/uv/) and Docker.
+### What was built
 
-```bash
-uv sync                                      # install dependencies
-uv run python scripts/download_handbook.py   # fetch and verify the handbook into data/raw/
-docker compose up -d --wait                  # Postgres 16 with pgvector on localhost:5432
-uv run pytest
-uv run python -m evals.verify_golden_set     # check every golden-set evidence quote against the PDF
+Ingestion turns the pinned PDF into rows. `fineprint ingest` checks the file against its recorded
+sha256, extracts one text block per page with pypdf, cuts the whole book into overlapping windows
+of 220 words that each remember the pages their first and last word came from, asks Amazon Titan
+Text Embeddings v2 for a 1024-number vector per window, and writes documents, pages and chunks to
+Postgres in one transaction. Re-running replaces that edition's rows for that chunk set rather than
+adding a second copy. Nothing at question time opens the PDF.
+
+Retrieval runs two searches over the same table. The lexical one matches the question's words
+against each chunk's stored `tsvector`, ranked by Postgres's `ts_rank_cd`; the question is turned
+into an OR query of its own lexemes, because a natural-language question as an AND query returns
+nothing the moment one word is missing. The vector one embeds the question and orders chunks by
+cosine distance with pgvector. Reciprocal rank fusion then merges the two ranked lists by
+*position* rather than by score — `ts_rank_cd` values and cosine similarities are on different
+scales and adding them would be meaningless — and the top 5 survivors go to the model. Each result
+carries where it stood in each list, so `/search` can show why a passage is there.
+
+Answering is where the checking happens. The model never sees or produces a page number: each
+excerpt arrives wrapped as `<chunk id="61" pages="23">…</chunk>`, and Claude Opus 5 answers by
+calling a single tool whose input schema is the JSON schema of the draft answer, which the service
+then validates with Pydantic. It drops any citation naming a chunk that was not retrieved and
+counts the drops, fills in every page number from the database rows, and marks each quote verified
+or not by looking for it in that chunk's own text. An unverified quote is still shown, marked
+unverified, because hiding it would hide the failure. When the excerpts do not contain the answer
+the model sets `found_in_handbook` to false and points at Medicare.gov, 1-800-MEDICARE, the State
+Health Insurance Assistance Program or Social Security; that is a successful answer, not an error.
+
+Around all of that: a FastAPI service with `POST /search`, `POST /ask` and `GET /healthz`, a
+`fineprint` command with `init-db`, `ingest`, `search`, `ask` and `serve`, a golden set of 40
+questions whose every evidence quote is checked against the extracted PDF text, and the three eval
+programs — the runner, the manual review tool, and the scoreboard generator that writes both
+`evals/scoreboard.md` and the block above.
+
+```
+                     fineprint ingest (once)
+
+  handbook.pdf ──▶ pages ──▶ 220-word chunks ──▶ Titan embeddings
+                                    │
+                                    ▼
+                    Postgres 16 · tsvector + vector(1024)
+                                    │
+  question ─┬─▶ lexical search (Postgres FTS) ──┐
+            │                                   ├─▶ RRF ─▶ top 5 chunks
+            └─▶ embed ─▶ vector search (cosine) ┘              │
+                                                               ▼
+                                                 Claude Opus 5, one tool call
+                                                               │
+                                                               ▼
+                                          answer · citations · confidence
+                                    pages come from the database, quotes checked
 ```
 
-The commands that ingest the handbook, run the service and produce the scoreboard arrive with
-part 1. Those will need one thing more: an AWS account with access to Amazon Bedrock in `us-west-2`,
-and credentials for it in the environment. Both model calls go there — Claude Opus 5 writes the
-answers and Amazon Titan Text Embeddings v2 turns passages and questions into vectors — so there is
-no separate API key to obtain, and no model runs on your machine. The commands above need none of
-it.
+There is no ORM and no RAG framework anywhere in `src/fineprint/`: plain Python, plain SQL, and one
+thin provider abstraction so part 3 can add retries and a second provider without touching the rest.
+[docs/how-it-works.md](docs/how-it-works.md) walks one question through every step.
+
+### Run it end to end
+
+Prerequisites:
+
+- [uv](https://docs.astral.sh/uv/) and Docker.
+- An AWS account with Amazon Bedrock access to **both** models: `us.anthropic.claude-opus-5` and
+  `amazon.titan-embed-text-v2:0`, in the region you configure below, and credentials for it in your
+  environment. Both model calls go to Bedrock, so there is no separate API key to obtain and no
+  model runs on your machine.
+
+Nothing below needs any state you do not create here.
+
+```bash
+git clone https://github.com/vmural9/fineprint.git
+cd fineprint
+uv sync                                       # create the virtualenv and install everything
+```
+
+Copy `.env.example` to `.env` and set `AWS_REGION` to the region you have those two models enabled
+in. The rest of the file already matches `docker-compose.yml` and the defaults in
+`src/fineprint/config.py`, so on a local machine there is nothing else to change.
+
+Credentials are the one thing `.env` cannot supply. The AWS SDK reads the credential chain from the
+process environment, not from this project's `.env`, so **export `AWS_PROFILE` in the shell you run
+these commands in** — or export the access keys, or leave it unset to use your default profile.
+Credentials themselves never go in a file in this repository.
+
+```bash
+cp .env.example .env
+$EDITOR .env                                  # AWS_REGION=us-west-2, if that is not your region
+export AWS_PROFILE=your-bedrock-profile       # boto3 reads this from the environment, not .env
+```
+
+Start Postgres, fetch the corpus, create the schema, and load the handbook. `ingest` is the first
+step that spends anything: one small embedding call per chunk, run in parallel, which takes
+seconds. It verifies the PDF's sha256 and the embedder's output width before it calls anything, so
+a run that cannot work costs nothing.
+
+```bash
+docker compose up -d --wait                   # Postgres 16 with pgvector on localhost:5432
+uv run python scripts/download_handbook.py    # fetch and hash-verify the handbook into data/raw/
+uv run fineprint init-db                      # create the tables and indexes; safe to repeat
+uv run fineprint ingest                       # extract, chunk, embed, store; safe to repeat
+```
+
+Now ask it things. `search` shows what retrieval finds with no model in the way, which is how a bad
+answer is diagnosed; `ask` adds the answer and the citation check.
+
+```bash
+uv run fineprint search "How much is the Part B premium in 2026?" --mode hybrid
+uv run fineprint search "How much is the Part B premium in 2026?" --mode vector
+uv run fineprint search "How much is the Part B premium in 2026?" --mode lexical
+
+uv run fineprint ask "How much is the Part B premium in 2026?"
+
+# q040 from the golden set, which the handbook does not answer: this one abstains and
+# points you somewhere that does know.
+uv run fineprint ask "How much would a Medigap Plan G policy cost my dad per month?"
+```
+
+Running that first question in all three modes shows, on one question, the fusion problem the
+numbers below describe: vector search puts the chunk carrying the standard Part B premium at the
+top of its list, and the hybrid pushes it down behind chunks that both retrievers agreed on.
+
+The same two operations over HTTP, plus a health check that tells "up" from "up but empty":
+
+```bash
+uv run fineprint serve                        # http://127.0.0.1:8000, schemas at /docs
+```
+
+Then, in another shell:
+
+```bash
+curl http://127.0.0.1:8000/healthz
+curl -X POST http://127.0.0.1:8000/search \
+  -H 'content-type: application/json' \
+  -d '{"query": "How much is the Part B premium in 2026?", "mode": "hybrid", "top_k": 5}'
+curl -X POST http://127.0.0.1:8000/ask \
+  -H 'content-type: application/json' \
+  -d '{"question": "How much is the Part B premium in 2026?"}'
+```
+
+Then the evals. The first command answers all 40 questions with Claude Opus 5 and is the expensive
+one; the other two skip the answer model. None of them is free or offline, because every mode that
+searches by meaning embeds each question through Bedrock — `lexical-only` is the one configuration
+that calls no model at all.
+
+```bash
+uv run python -m evals.run_golden_set --config hybrid
+uv run python -m evals.run_golden_set --config vector-only --retrieval-only
+uv run python -m evals.run_golden_set --config lexical-only --retrieval-only
+uv run python -m evals.review evals/results/<run_id>.json    # your own pass or fail per answer
+uv run python -m evals.scoreboard                            # regenerate both tables
+```
+
+Each run writes `evals/results/<UTC timestamp>_<config>.json`, recording the commit, the whole
+configuration, the corpus and golden-set hashes, and every question's retrieved chunks, metrics and
+answer. `evals/scoreboard.md` and the block above are generated from the latest results file of
+each configuration and are never edited by hand; `python -m evals.scoreboard --check` writes
+nothing and exits non-zero when either file is out of date, which is what stops a number from being
+typed in. `evals/README.md` documents the golden set and the metrics.
+
+The checks that run on every change, none of which needs AWS or the network:
+
+```bash
+uv run ruff check . && uv run ruff format --check .
+uv run pytest                                          # integration tests need Postgres up
+uv run python -m evals.verify_golden_set               # re-check every evidence quote against the PDF
+uv run python -m evals.scoreboard --check
+```
+
+### What the numbers say
+
+Three runs over the same 40 questions and the same pinned PDF, at k = 5, 20 candidates per
+retriever, RRF k = 60, on the naive fixed-size chunker. Retrieval metrics are computed over the
+answerable questions only; an unanswerable question has no expected pages, and what it measures is
+abstention. The results files are in `evals/results/`, and the scoreboard recomputes every
+aggregate from their per-question rows.
+
+**The hybrid does not win.** Vector-only retrieval gets 88.2% on Page hit@5; the hybrid gets 85.3%.
+The secondary metrics say it more sharply: `page_recall@5` is 88.2% for vector-only against 82.4%
+for the hybrid, and `mrr` is 0.86 against 0.77. Fusion made the system slightly worse than one of
+the legs it fuses.
+
+That is what reciprocal rank fusion does when one of the two lists is weak. RRF scores a chunk by
+its position in each list it appears in and adds those scores up, so a chunk both retrievers
+returned outranks a chunk only one of them returned. That is the behaviour you want when both lists
+are good, and exactly the behaviour that hurts here: agreement with a weak lexical list is worth
+more than being first in the strong one. Question `q034` — "Mom has a high income and gets her drug
+coverage through a Medicare Advantage plan. Does she still owe the Part D extra charge, and does
+she pay it to the plan?" — shows it cleanly. The answer is on page 82. Vector search put chunks
+from page 82 at the top of its list; lexical search did not return page 82 anywhere in its 20
+candidates. The hybrid's top 5 was then made of chunks that both lists had returned somewhere,
+plus lexical's own first result, and page 82 was gone. It is the only question in the run where
+vector-only found the page and the hybrid did not, there is no question where the trade went the
+other way, and that single question is the whole gap between the two rows.
+
+**The lexical leg is the weakest part of the system**, at 67.6% against the vector leg's 88.2%, with
+`mrr` 0.56 against 0.86. Postgres full-text ranking here is `ts_rank_cd`, a coverage-density score
+and not BM25 — the `pgvector/pgvector:pg16` image ships no BM25 extension — and the chunks it
+ranks still contain running headers, the table of contents and the five-page index, because part 1
+is deliberately the naive baseline.
+
+**Plain lookups are the weakest question type**, which is not where you would expect a naive
+retriever to fail. For the hybrid, `page_hit@5` by type is 100.0% on the 10 `multi_section`
+questions, 88.9% on the 9 `table` questions, and 73.3% on the 15 `lookup` questions. Vector-only
+shows the same shape: 100.0%, 88.9%, 80.0%. The likely reason is that a lookup is short and
+specific and often phrased in the reader's words rather than the handbook's — "will Medicare buy
+him a wheelchair" against a passage headed "durable medical equipment" — while a multi-section
+question is long enough to overlap the handbook's vocabulary somewhere. Part 2 measures that rather
+than assuming it.
+
+**The answers hold up where retrieval does.** `cited_page_hit` is 85.3% — the same as the hybrid's
+page hit rate, and on the same questions: whenever an expected page was retrieved, the answer cited
+it, and whenever one was not, it did not invent one. `abstention_accuracy` is 90.0%; every wrong
+abstention in that run is an answerable question where retrieval had not brought back everything
+the answer needed, and the model said so instead of filling the gap. Not one of them produced a
+confident wrong answer.
+
+**The Manual pass column is empty** because nobody has graded the answers yet: `0 of 40` reviewed,
+as the detail table says. `page_hit@5` measures whether the right page came back, and
+`cited_page_hit` whether the answer pointed at it; neither can say whether the sentence built from
+that page is *correct*. That judgement is the reviewer's, it is recorded with
+`python -m evals.review`, and part 4 reuses those same labels to calibrate its LLM judge rather
+than creating new ones.
+
+**What part 2 does with this.** Three measured openings: whether fusion can be made to earn its
+place (weighting the legs, or a cross-encoder re-ranker over the fused candidates, instead of
+trusting agreement); whether the lexical leg improves more from a real BM25 extension or from
+stripping the headers, the contents and the index out of the chunks; and whether structure-aware
+chunking closes the gap on `lookup` questions. All three are measured on this same golden set and
+land in the same table, beside these rows.
 
 ## The corpus
 
@@ -115,10 +333,13 @@ verifying the hash before it writes anything into place.
 
 docs/PLAN.md                  the whole series, with a definition of done per part
 docs/parts/                   build spec per part, written when that part starts
+docs/how-it-works.md          one question walked through every step of the system
 docs/scripts/                 video scripts, written after each part is built
-evals/                        golden set, eval runners, scoreboard generator
+src/fineprint/                the service: config, db, schema.sql, pdf, chunking, providers,
+                              ingest, retrieval, answer, api, cli
+evals/                        golden set, metrics, runner, review tool, scoreboard generator
+evals/results/                one JSON file per eval run; the scoreboard reads these
 scripts/download_handbook.py  pinned, hash-verified handbook download
-src/fineprint/                application code — empty until part 1
 tests/
 docker-compose.yml  pyproject.toml  .env.example
 ```
