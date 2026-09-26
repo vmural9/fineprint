@@ -48,7 +48,9 @@ Headings: a line is a heading when
   digit, and it holds one phrase: no full stop, exclamation mark or colon inside it starts
   another, unless it is a question;
 - it carries no web address and does not start with "Go to", like the index's cross-references;
-- it follows a finished sentence, the top of a page, or another heading, title or table;
+- it follows a finished sentence or a web address printed on its own line, as page 32's
+  "Bariatric surgery" follows "Medicare.gov/procedure-price-lookup", or it follows the top of a
+  page, or another heading, title or table;
 - the line after it neither starts in lowercase or with a bracket, nor finishes a sentence on a
   short line, any of which would make it the start of a sentence that carries on, nor ends in a
   page number, which would make it the head of a list of index entries.
@@ -209,6 +211,8 @@ MAX_SUBHEADING_CHARACTERS = 55
 NOT_A_HEADING_ENDING = re.compile(r"[.,;:!&/\-–—\d]$")
 SECOND_PHRASE = re.compile(r"[.!:] [A-Z]")
 WEB_ADDRESS = re.compile(r"\.(gov|org|com)\b")
+# A line that is nothing but a web address, "Medicare.gov/procedure-price-lookup".
+ONLY_A_WEB_ADDRESS = re.compile(r"^[\w.-]+\.(gov|org|com|mil)(/\S*)?$")
 ENDS_IN_PAGE_NUMBER = re.compile(r"\d,?$")
 OPENING_QUOTES = "“‘\"'"
 CLOSING_QUOTES = "”’\"'"
@@ -364,6 +368,12 @@ def looks_like_heading(text: str) -> bool:
     )
 
 
+def closes_a_passage(text: str) -> bool:
+    """Whether a line ends what comes before it: a finished sentence, or a web address the
+    handbook prints on a line of its own at the end of a passage."""
+    return ENDS_SENTENCE.search(text) is not None or ONLY_A_WEB_ADDRESS.match(text) is not None
+
+
 def is_whole_heading(heading: str) -> bool:
     """Whether the lines taken for a heading make a whole one, and only one."""
     return (
@@ -422,7 +432,7 @@ def heading_length(lines: list[Line], index: int, previous_kind: str, taken: set
         previous_kind != "line"
         or previous is None
         or previous.page != line.page
-        or ENDS_SENTENCE.search(previous.text) is not None
+        or closes_a_passage(previous.text)
     )
     if not at_a_break:
         return 0
