@@ -45,8 +45,9 @@ class Settings(BaseSettings):
     reranker_model: str = "cohere.rerank-v3-5:0"
     rerank_candidates: int = 20
 
-    # The model that grades answers in the evals; the service never calls it. It is not the
-    # model that writes the answers, so no answer is graded by its own author.
+    # The judge that scores the four RAGAS metrics in the evals (`python -m evals.score`); the
+    # service never calls it. It is not the model that writes the answers, so no answer is scored
+    # by its own author.
     judge_model: str = "us.anthropic.claude-sonnet-5"
 
     # The region every Bedrock model is called in.
