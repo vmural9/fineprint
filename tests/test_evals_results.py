@@ -310,6 +310,21 @@ def test_files_that_are_not_results_are_ignored(tmp_path: Path):
     assert [result.run_id for result in load_all(tmp_path)] == ["20260921T031500Z_hybrid"]
 
 
+def test_a_json_file_in_a_subdirectory_is_not_a_run_and_is_ignored(tmp_path: Path):
+    """`candidates/`, where the candidate-rank diagnostic writes its own differently shaped
+    files, is the motivating case: this file has no `config` field, so if `load_all` ever read
+    it, it would fail the whole scoreboard with "not a results file", not just skip one row."""
+    subdirectory = tmp_path / "candidates"
+    subdirectory.mkdir()
+    (subdirectory / "20260926T145549Z_candidates-fixed-220w-hybrid.json").write_text(
+        json.dumps({"run_id": "not-a-run", "chunk_set": "fixed-220w"}), encoding="utf-8"
+    )
+    save(run(), results_path(run().run_id, tmp_path))
+
+    assert [result.run_id for result in load_all(tmp_path)] == ["20260921T031500Z_hybrid"]
+    assert set(latest_per_config(tmp_path)) == {"hybrid"}
+
+
 # --- aggregates come from the per-question rows -----------------------------------
 
 

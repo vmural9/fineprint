@@ -247,7 +247,12 @@ def load(path: Path) -> RunResult:
 
 
 def load_all(directory: Path = RESULTS_DIR) -> list[RunResult]:
-    """Read every results file in the directory, oldest run first."""
+    """Read every results file in the directory, oldest run first.
+
+    The glob is not recursive, so a subdirectory — such as `candidates/`, where the
+    candidate-rank diagnostic writes its differently shaped files — is never a run and is never
+    read.
+    """
     if not directory.is_dir():
         return []
     results = [load(path) for path in sorted(directory.glob("*.json"))]

@@ -22,6 +22,11 @@ and `evals.results`'s provenance helpers, rather than rebuilding a second copy o
 turns `Settings` into a database connection and a results file". `save()` and `results_path()`
 only need a dataclass, so they work for this script's own schema too, even though it is not a
 `RunResult`.
+
+Its results land in `evals/results/candidates/`, a subdirectory of the run results rather than
+beside them: `evals.results.load_all` globs only the top level of `evals/results/` and treats
+every file it finds there as a `RunResult`, which a `CandidatesResult` — it has no `config`
+field — is not, so the scoreboard would refuse it with "not a results file".
 """
 
 import argparse
@@ -56,6 +61,12 @@ from fineprint.db import connection_pool, describe_database
 # Mirrors `fineprint.retrieval.SEARCH_MODES`, named here so this module needs no import of
 # `fineprint.retrieval` (and everything behind it) just to describe the command line.
 MODES = ("hybrid", "vector", "lexical")
+
+# Where this diagnostic writes its output: its own subdirectory of the run results, not beside
+# them. A `CandidatesResult` carries no `config` field, so `evals.results.load_all`'s glob — the
+# one the scoreboard reads through — would refuse one of these files with "not a results file"
+# if it ever landed at the top level of `evals/results/` alongside an actual run.
+CANDIDATES_DIR = RESULTS_DIR / "candidates"
 
 # The three question types the retrieval metrics apply to, in the order the scoreboard uses.
 # `unanswerable` questions have no expected page to look for, so they never appear in a row here.
@@ -195,7 +206,8 @@ def build_parser() -> argparse.ArgumentParser:
             "For every answerable golden question, find where the first chunk covering an "
             "expected page sits in the retriever's candidate pool, before any cut or "
             "re-ranking (tests the premise of H2: a re-ranker can only lift a page that is "
-            "already in the pool)."
+            "already in the pool). Writes into its own subdirectory, apart from run results, "
+            "since its files are not runs and evals.results.load_all would refuse them as one."
         ),
     )
     parser.add_argument(
@@ -212,15 +224,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--results-dir",
         type=Path,
-        default=RESULTS_DIR,
-        help=f"where to write the results file (default: {RESULTS_DIR})",
+        default=CANDIDATES_DIR,
+        help=f"where to write the results file (default: {CANDIDATES_DIR})",
     )
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the diagnostic once and write
-    `evals/results/<UTC ts>_candidates-<chunk_set>-<mode>.json`."""
+    `evals/results/candidates/<UTC ts>_candidates-<chunk_set>-<mode>.json`."""
     args = build_parser().parse_args(argv)
     settings = Settings()
     chunk_set = args.chunk_set or settings.chunk_set

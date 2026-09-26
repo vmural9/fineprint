@@ -126,7 +126,9 @@ uv run python -m evals.scoreboard                                         # rege
   from part 2 on, the re-ranker model and how many candidates it read, when one ran — the corpus
   and golden-set hashes, and, per question, every chunk that came back with its text, its
   ordinal, its section heading and its ranks, the metrics, the full answer, and the manual
-  verdict. One question failing is recorded on that question; the run carries on.
+  verdict. One question failing is recorded on that question; the run carries on. Only files
+  directly under `evals/results/` are runs; a subdirectory such as `evals/results/candidates/`
+  (the candidate-rank diagnostic's own output, below) never is.
 - **`review`** shows each answered question with its expected answer, the generated answer, the
   pages it cited and whether each quote was verified, and reads `p`, `f`, `s` or `q` plus an
   optional note. It saves after every verdict. `--only-unreviewed` picks up where you left off.
@@ -265,7 +267,9 @@ row, each with its four bucket counts, then one line per question outside the to
 rank and its expected pages. `--mode lexical` calls no model; `hybrid` and `vector` each embed
 every question once, the same one Bedrock call per question as any other retrieval-only run.
 
-It writes `evals/results/<UTC timestamp>_candidates-<chunk_set>-<mode>.json`:
+It writes to its own subdirectory, apart from the run results above, since its files carry no
+`config` field and `evals.results.load_all` would refuse them as a run:
+`evals/results/candidates/<UTC timestamp>_candidates-<chunk_set>-<mode>.json`:
 
 | Field | Meaning |
 |-------|---------|
