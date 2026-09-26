@@ -7,6 +7,7 @@ wiring — which edition and chunk set a flag chooses, and what the command prin
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 from types import SimpleNamespace
 
 import psycopg
@@ -212,6 +213,13 @@ CHUNKS = [
     ),
 ]
 
+# The same two chunks after a re-ranker read them beside a question about hearing aids: the
+# hearing passage, fused second, comes first, and a re-ranked chunk's score is the re-ranker's.
+RERANKED = [
+    replace(CHUNKS[1], rank=1, score=0.8803, rerank_score=0.8803),
+    replace(CHUNKS[0], rank=2, score=0.0216, rerank_score=0.0216),
+]
+
 PREMIUM_DRAFT = DraftAnswer(
     answer="The standard Part B premium in 2026 is $202.90 a month.",
     found_in_handbook=True,
@@ -242,7 +250,8 @@ def offline_service(monkeypatch, no_dot_env) -> SimpleNamespace:
     """Replace the pool, the embedder, the retriever and the chat model with fakes.
 
     `service.retriever` records what the command searched for and `service.draft` is what
-    the model "returns", so a test can change either before running the command.
+    the model "returns", so a test can change either before running the command. Once the
+    command has built its retriever, `service.reranker` is the re-ranker it handed over.
     """
     monkeypatch.setenv("DATABASE_URL", FAKE_DATABASE_URL)
     monkeypatch.setattr("fineprint.cli.get_embedder", lambda settings: FakeEmbedder())
@@ -254,9 +263,12 @@ def offline_service(monkeypatch, no_dot_env) -> SimpleNamespace:
     monkeypatch.setattr("fineprint.cli.connection_pool", fake_pool)
 
     service = SimpleNamespace(retriever=FakeRetriever(CHUNKS), draft=PREMIUM_DRAFT)
-    monkeypatch.setattr(
-        "fineprint.cli.Retriever", lambda pool, embedder, settings: service.retriever
-    )
+
+    def build_retriever(pool, embedder, settings, reranker=None) -> FakeRetriever:
+        service.reranker = reranker
+        return service.retriever
+
+    monkeypatch.setattr("fineprint.cli.Retriever", build_retriever)
     monkeypatch.setattr(
         "fineprint.cli.get_chat_model", lambda settings: FakeChatModel(service.draft)
     )
@@ -278,6 +290,51 @@ def test_search_prints_ranks_pages_both_source_ranks_and_the_start_of_each_chunk
     # Both source ranks, and a dash where a retriever did not return the chunk.
     assert "lexical 1" in printed and "vector 2" in printed
     assert "lexical -" in printed and "vector 4" in printed
+
+
+def test_search_prints_the_fused_rank_and_the_rerank_score_when_a_reranker_ran(
+    offline_service, capsys
+):
+    offline_service.retriever = FakeRetriever(RERANKED)
+
+    main(["search", "Does Medicare cover hearing aids?"])
+
+    lines = capsys.readouterr().out.splitlines()
+    hearing = next(line for line in lines if "chunk 118" in line)
+    premium = next(line for line in lines if "chunk 61" in line)
+    assert hearing.lstrip().startswith("1.") and "fused 2" in hearing
+    assert "rerank 0.8803" in hearing
+    assert premium.lstrip().startswith("2.") and "fused 1" in premium
+    assert "rerank 0.0216" in premium
+    # The ranks each retriever gave the chunk are still there beside the new ones.
+    assert "lexical -" in hearing and "vector 4" in hearing
+
+
+def test_search_prints_no_fused_rank_when_nothing_was_re_ranked(offline_service, capsys):
+    """Without a re-ranker the fused rank is the rank, so printing it would say nothing new."""
+    main(["search", "How much is the Part B premium in 2026?"])
+
+    printed = capsys.readouterr().out
+    assert "fused" not in printed
+    assert "rerank" not in printed
+
+
+@pytest.mark.parametrize("command", ["search", "ask"])
+def test_search_and_ask_hand_the_retriever_the_configured_reranker(
+    offline_service, monkeypatch, command
+):
+    monkeypatch.setenv("RERANKER_PROVIDER", "bedrock")
+
+    main([command, "Does Medicare cover hearing aids?"])
+
+    assert offline_service.reranker.model == "cohere.rerank-v3-5:0"
+
+
+@pytest.mark.parametrize("command", ["search", "ask"])
+def test_search_and_ask_re_rank_nothing_unless_a_reranker_is_configured(offline_service, command):
+    main([command, "Does Medicare cover hearing aids?"])
+
+    assert offline_service.reranker is None
 
 
 def test_search_uses_the_mode_and_top_k_it_is_given(offline_service):
