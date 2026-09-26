@@ -244,15 +244,17 @@ class Retriever:
         Without a re-ranker, these are the first `top_k` of `candidates()`. With one, in hybrid
         mode, the re-ranker reads the question beside each of the first `RERANK_CANDIDATES`
         and the best `top_k` are kept in its order. Each keeps its fused rank, and its score
-        becomes the re-ranker's. `vector` and `lexical` are never re-ranked: they exist to
-        measure one retriever on its own.
+        becomes the re-ranker's. A `top_k` above `RERANK_CANDIDATES` widens what it reads to
+        `top_k`, so a search never returns fewer than it was asked for while the pool has them.
+        `vector` and `lexical` are never re-ranked: they exist to measure one retriever on its
+        own.
         """
         kept = self.settings.retrieval_top_k if top_k is None else top_k
         ordered = self.candidates(question, mode)
         if self.reranker is None or mode != "hybrid":
             return ordered[:kept]
 
-        shortlist = ordered[: self.settings.rerank_candidates]
+        shortlist = ordered[: max(self.settings.rerank_candidates, kept)]
         reranked = self.reranker.rerank(question, [chunk.text for chunk in shortlist], top_n=kept)
         return [
             replace(
