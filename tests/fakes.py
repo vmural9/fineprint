@@ -1,8 +1,17 @@
-"""Stand-ins for the two Bedrock models, so the unit tests never call AWS.
+"""Stand-ins for the Bedrock models, so the unit tests never call AWS.
 
-Both satisfy the protocols in `fineprint.providers.base`, so anything written against those
-protocols — ingestion, retrieval, answering — can be tested with these in place of the real
-models. Import them as `from tests.fakes import FakeChatModel, FakeEmbedder`.
+Each one satisfies a protocol in `fineprint.providers.base`, so anything written against those
+protocols — ingestion, retrieval, answering, the eval metrics — can be tested with these in place
+of the real models:
+
+- `FakeEmbedder` makes a vector from a hash of the text, so the same text always gets the same
+  vector.
+- `FakeChatModel` hands back one canned object, whatever it is asked.
+- `ScriptedChatModel` hands back canned objects in order, from a separate queue for each schema,
+  for code that asks a model several different things, or asks the same thing twice.
+- `FakeReranker` puts passages in order of how many of the query's words each one contains.
+
+Import them as `from tests.fakes import FakeChatModel, FakeEmbedder`.
 """
 
 import hashlib
@@ -35,7 +44,7 @@ class FakeEmbedder:
 
 
 class FakeCall(NamedTuple):
-    """One call made to `FakeChatModel`, kept so a test can inspect the prompt."""
+    """One call made to a fake chat model, kept so a test can inspect the prompt."""
 
     system: str
     user: str
@@ -64,6 +73,56 @@ class FakeChatModel:
             )
         return LLMResult(
             parsed=self.response,
+            model=self.model,
+            input_tokens=self.input_tokens,
+            output_tokens=self.output_tokens,
+            latency_ms=12.5,
+        )
+
+
+class ScriptedChatModel:
+    """Hands back canned objects in order, from a separate queue for each schema.
+
+    `ScriptedChatModel({SentenceVerdicts: [first, second], AnswerClaims: [claims]})` answers the
+    first request for a `SentenceVerdicts` with `first` and the next with `second`, whatever
+    other schemas are asked for in between. That is what code making several different calls,
+    or retrying one, needs in order to be tested call by call. A request the script has no
+    object left for fails the test, so an unexpected extra call cannot pass unnoticed.
+    """
+
+    model = "scripted-chat-model"
+
+    def __init__(
+        self,
+        script: dict[type[BaseModel], list[BaseModel]],
+        *,
+        input_tokens: int = 900,
+        output_tokens: int = 120,
+    ):
+        for schema, responses in script.items():
+            for response in responses:
+                if not isinstance(response, schema):
+                    raise TypeError(
+                        f"the script files a {type(response).__name__} under {schema.__name__}"
+                    )
+        # Copies, so popping from them leaves the test's own lists as they were.
+        self.script = {schema: list(responses) for schema, responses in script.items()}
+        self.input_tokens = input_tokens
+        self.output_tokens = output_tokens
+        self.calls: list[FakeCall] = []
+
+    def complete_structured[T: BaseModel](
+        self, system: str, user: str, schema: type[T]
+    ) -> LLMResult[T]:
+        self.calls.append(FakeCall(system, user, schema))
+        queue = self.script.get(schema)
+        if not queue:
+            raise AssertionError(
+                f"ScriptedChatModel was asked for a {schema.__name__}, and its script has none "
+                "left to hand back"
+            )
+        return LLMResult(
+            parsed=queue.pop(0),
             model=self.model,
             input_tokens=self.input_tokens,
             output_tokens=self.output_tokens,
