@@ -117,3 +117,55 @@ The metrics are defined in `metrics.py`, one short function each:
 Retrieval metrics are computed over the answerable questions only: an `unanswerable` item has
 no expected pages, and what it measures is abstention. A metric that does not apply to a
 question is left empty rather than scored zero, so it never drags an average down.
+
+## Candidate-rank diagnostic
+
+A re-ranker can only reorder chunks retrieval already put in front of it. Before crediting the
+re-ranker experiment with a page it recovered, it is worth knowing whether that page was ever
+reachable at all. `python -m evals.candidates` answers that, independently of whether a
+re-ranker is even configured:
+
+```bash
+uv run python -m evals.candidates                                    # Settings().chunk_set, hybrid
+uv run python -m evals.candidates --chunk-set fixed-220w --mode hybrid
+uv run python -m evals.candidates --chunk-set sections --mode hybrid
+```
+
+For every answerable question, it calls `Retriever.candidates()` — the full ordered pool exactly
+as fusion left it, before the top-5 cut and before any re-ranking — and finds the 1-based pool
+rank of the first chunk whose page range covers an expected page (or one of the alternate pages
+recorded for it in `alt_pages`; see "How `alt_pages` is scored" above). The pool depends on only
+`--chunk-set` and `--mode`, since re-ranking and the top-k cut both happen after `candidates()`
+returns, which is why this command takes those two directly rather than an evaluation
+configuration name.
+
+Each question's rank is put in one of four buckets:
+
+| Bucket | Meaning |
+|--------|---------|
+| `1-5` | Already where `fineprint search` would return it today; a re-ranker changes nothing here. |
+| `6-20` | In the pool, past the top 5 — exactly what raising `RERANK_CANDIDATES` and turning on the re-ranker could promote. |
+| `21-40` | Deeper still in the fused pool. |
+| `absent` | Not retrieved at all, at any rank the pool reached. No re-ranker can fix this one; the chunking or the retriever has to change instead. |
+
+The command prints one row per question type (`lookup`, `table`, `multi_section`) plus an `all`
+row, each with its four bucket counts, then one line per question outside the top 5, naming its
+rank and its expected pages. `--mode lexical` calls no model; `hybrid` and `vector` each embed
+every question once, the same one Bedrock call per question as any other retrieval-only run.
+
+It writes `evals/results/<UTC timestamp>_candidates-<chunk_set>-<mode>.json`:
+
+| Field | Meaning |
+|-------|---------|
+| `run_id` | `<UTC timestamp>_candidates-<chunk_set>-<mode>`. |
+| `created_at` | When the run finished, UTC. |
+| `git` | `{commit, dirty}` — the commit the run was made from. |
+| `chunk_set` | Which chunk set the pool was drawn from. |
+| `mode` | `hybrid`, `vector`, or `lexical`. |
+| `pool_size` | `RETRIEVAL_CANDIDATES`, the cap each retriever's own query ran with. |
+| `corpus` | `{edition, sha256}` — which handbook was searched. |
+| `golden_set` | `{sha256, count}` — which golden set was used. |
+| `questions` | One row per answerable question: `{id, type, expected_pages, first_hit_rank, bucket}`. `first_hit_rank` is `null` exactly when `bucket` is `"absent"`. |
+
+Unanswerable questions have no expected page to look for, so they are skipped outright, the same
+way the retrieval metrics skip them.
