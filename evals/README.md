@@ -132,9 +132,15 @@ uv run python -m evals.scoreboard                                         # rege
   optional note. It saves after every verdict. `--only-unreviewed` picks up where you left off.
 - **`scoreboard`** regenerates `evals/scoreboard.md` and the block between
   `<!-- scoreboard:start -->` and `<!-- scoreboard:end -->` in the repository `README.md` from
-  the latest results file of each configuration. `--check` writes nothing and exits non-zero
-  when either file is out of date, which is what stops a hand edit. Neither file is ever edited
-  by hand: if a number is wrong, fix the results or the generator and run it again.
+  the latest results file of each configuration. Once a results file carries a scoring pass, its
+  four RAGAS columns fill in on the headline table, and `evals/scoreboard.md` gains their own
+  breakdown by question type (`page_recall@5`, `context_recall` and `faithfulness`, alongside
+  `page_hit@5`); a row with a re-ranker also gets a "Re-ranker movement" table, showing how many
+  of its answerable questions the re-ranker lifted into the top 5, left there already, or could
+  not find an expected page for at all; and the provenance table names that row's re-ranker and
+  judge model. `--check` writes nothing and exits non-zero when either file is out of date, which
+  is what stops a hand edit. Neither file is ever edited by hand: if a number is wrong, fix the
+  results or the generator and run it again.
 
 The first six are defined in `metrics.py`, one short function each; the last four are defined in
 `ragas_metrics.py`, one function each:
