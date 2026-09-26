@@ -38,7 +38,18 @@ class Settings(BaseSettings):
     embedding_provider: str = "bedrock"
     embedding_model: str = "amazon.titan-embed-text-v2:0"
 
-    # The region both Bedrock models are called in.
+    # An optional step between fusion and the top-k cut. "none" skips it. "bedrock" sends the
+    # question and the best `rerank_candidates` fused chunks to `reranker_model`, which scores
+    # each chunk against the question, and the top k are kept in that new order.
+    reranker_provider: str = "none"
+    reranker_model: str = "cohere.rerank-v3-5:0"
+    rerank_candidates: int = 20
+
+    # The model that grades answers in the evals; the service never calls it. It is not the
+    # model that writes the answers, so no answer is graded by its own author.
+    judge_model: str = "us.anthropic.claude-sonnet-5"
+
+    # The region every Bedrock model is called in.
     aws_region: str = "us-west-2"
 
     # Retrieval sizes: how many rows each retriever returns, how many survive fusion, and the

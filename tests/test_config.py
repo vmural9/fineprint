@@ -15,6 +15,10 @@ SETTING_VARIABLES = (
     "LLM_MODEL",
     "EMBEDDING_PROVIDER",
     "EMBEDDING_MODEL",
+    "RERANKER_PROVIDER",
+    "RERANKER_MODEL",
+    "RERANK_CANDIDATES",
+    "JUDGE_MODEL",
     "AWS_REGION",
     "RETRIEVAL_CANDIDATES",
     "RETRIEVAL_TOP_K",
@@ -40,6 +44,10 @@ def test_defaults_match_the_documented_configuration(clean_environment):
     assert settings.llm_model == "us.anthropic.claude-opus-5"
     assert settings.embedding_provider == "bedrock"
     assert settings.embedding_model == "amazon.titan-embed-text-v2:0"
+    assert settings.reranker_provider == "none"
+    assert settings.reranker_model == "cohere.rerank-v3-5:0"
+    assert settings.rerank_candidates == 20
+    assert settings.judge_model == "us.anthropic.claude-sonnet-5"
     assert settings.aws_region == "us-west-2"
     assert settings.retrieval_candidates == 20
     assert settings.retrieval_top_k == 5
