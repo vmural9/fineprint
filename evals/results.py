@@ -7,7 +7,12 @@ back with their ranks, the metrics, the full answer, and the human verdict. The 
 recomputes every aggregate from those per-question rows and stores no summary of its own.
 
 `run_id` is `<UTC timestamp>_<config name>`, for example `20260921T031500Z_hybrid`, which sorts
-by time and names the configuration in the file listing.
+by time and names the configuration in the file listing. A configuration name may contain `+`
+(`hybrid+rerank`), which is a valid character in both a file name and this join.
+
+Every field part 2 adds defaults to `None`, so the three results files part 1 committed —
+written before any of them existed — still load unchanged; `evals.score` is what fills them in,
+in a second pass over a file `run_golden_set` already wrote (decision D4).
 """
 
 import hashlib
@@ -45,7 +50,7 @@ class GitState:
 class RunConfig:
     """The knobs that were set for this run. Changing any of them makes a different row."""
 
-    name: str  # hybrid, vector-only, lexical-only
+    name: str  # hybrid, vector-only, lexical-only, hybrid+rerank, sections, sections+rerank
     mode: str  # hybrid, vector, lexical
     chunk_set: str
     top_k: int
@@ -53,6 +58,8 @@ class RunConfig:
     rrf_k: int
     embedding_model: str
     llm_model: str | None  # None on a --retrieval-only run: no answer model was called
+    reranker: str | None = None  # the Bedrock re-ranker model id, or None: this run had none
+    rerank_candidates: int | None = None  # candidates it read; None when this run had no re-ranker
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,8 +82,12 @@ class GoldenSetInfo:
 class RetrievedChunk:
     """One chunk the retriever returned: where it sits in the handbook and where it ranked.
 
-    The chunk text is deliberately not stored. It would multiply the size of every results file,
-    and the chunk id plus the page range is enough to look it up.
+    From part 2 on (decision D5) this also carries the chunk's own text, its ordinal and its
+    section heading, because the scoring pass needs the text to judge and reads it only from
+    this file — never from the database. `ordinal` survives a re-ingest where `chunk_id` does
+    not. `fused_rank` is the chunk's place after fusion and before any re-ranking (`None` outside
+    hybrid mode, and equal to `rank` when nothing re-ranked the list); `rerank_score` is `None`
+    when no re-ranker ran. A file written before part 2 has all five fields `None`.
     """
 
     chunk_id: int
@@ -86,6 +97,11 @@ class RetrievedChunk:
     score: float | None = None
     lexical_rank: int | None = None
     vector_rank: int | None = None
+    ordinal: int | None = None
+    section: str | None = None
+    text: str | None = None
+    fused_rank: int | None = None
+    rerank_score: float | None = None
 
 
 @dataclass(slots=True)
@@ -114,6 +130,10 @@ class QuestionResult:
     answer: dict[str, Any] | None = None  # the whole AnswerResponse, or None if not answered
     review: Review = field(default_factory=Review)
     error: str | None = None  # set when this question failed; the run carried on without it
+    # The judge's verdicts behind this question's four RAGAS metrics — the sentences, claims and
+    # per-passage calls `evals.score` made — kept for `--explain` and for anyone auditing a
+    # score. `None` until `evals.score` has scored this question.
+    scoring_detail: dict[str, Any] | None = None
 
     @property
     def answered(self) -> bool:
@@ -124,6 +144,22 @@ class QuestionResult:
     def verdict(self) -> str | None:
         """The human verdict, lifted out of the review so aggregation can read it directly."""
         return self.review.verdict
+
+
+@dataclass
+class Scoring:
+    """Provenance for a scoring pass: which judge, which prompts, and what it cost.
+
+    Set once `evals.score` has scored every question it could; `None` on a file that has not
+    been through that second pass yet, including every file part 1 committed.
+    """
+
+    judge_model: str
+    embedding_model: str
+    prompts_sha256: str  # sha256 of the prompt texts in evals/ragas_metrics.py
+    scored_at: str  # UTC, same format as created_at
+    judge_input_tokens: int
+    judge_output_tokens: int
 
 
 @dataclass(slots=True)
@@ -137,6 +173,7 @@ class RunResult:
     corpus: Corpus
     golden_set: GoldenSetInfo
     questions: list[QuestionResult]
+    scoring: Scoring | None = None
 
     @property
     def aggregates(self) -> Aggregates:
@@ -193,6 +230,7 @@ def load(path: Path) -> RunResult:
         raise ResultsError(f"{path}: expected a JSON object")
 
     try:
+        scoring = record.get("scoring")
         return RunResult(
             run_id=_field(record, "run_id"),
             created_at=_field(record, "created_at"),
@@ -201,6 +239,7 @@ def load(path: Path) -> RunResult:
             corpus=Corpus(**_field(record, "corpus")),
             golden_set=GoldenSetInfo(**_field(record, "golden_set")),
             questions=[_question(row) for row in _field(record, "questions")],
+            scoring=Scoring(**scoring) if scoring is not None else None,
         )
     except (KeyError, TypeError) as error:
         raise ResultsError(f"{path}: not a results file: {error}") from error
@@ -281,4 +320,5 @@ def _question(row: Any) -> QuestionResult:
         answer=row.get("answer"),
         review=Review(**row.get("review", {})),
         error=row.get("error"),
+        scoring_detail=row.get("scoring_detail"),
     )
