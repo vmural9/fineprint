@@ -39,9 +39,9 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from statistics import fmean
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, BeforeValidator, Field
 
 from fineprint.providers.base import ChatModel, Embedder, LLMResult
 
@@ -241,6 +241,27 @@ NO_PASSAGES = "No passages were retrieved."
 # the yes or no, so the judge explains before it decides, the order the RAGAS prompts ask for.
 
 
+def _list_from_json_string(value: Any) -> Any:
+    """Turn a list the judge wrote out as a JSON string back into a list; pass anything else on.
+
+    The judge sometimes sends a list-valued field as text holding JSON, '[{"reason": ...}]',
+    instead of as a list. Rejecting that would make the chat model send the reply back to be
+    redone, which costs a second call, and a second such reply would fail the question. A string
+    that is not JSON is passed on unchanged, for validation to reject as usual.
+    """
+    if not isinstance(value, str):
+        return value
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return value
+
+
+# Lets a list-valued reply field also arrive as that list written out as a JSON string. It runs
+# before validation and leaves the JSON schema, and so what the judge is shown, unchanged.
+_OR_JSON_STRING = BeforeValidator(_list_from_json_string)
+
+
 class SentenceVerdict(BaseModel):
     """The judge's call on one sentence of the reference answer."""
 
@@ -253,7 +274,7 @@ class SentenceVerdict(BaseModel):
 class SentenceVerdicts(BaseModel):
     """What the context recall judge returns."""
 
-    verdicts: list[SentenceVerdict] = Field(
+    verdicts: Annotated[list[SentenceVerdict], _OR_JSON_STRING] = Field(
         description="One verdict for each numbered sentence, in the same order"
     )
 
@@ -270,7 +291,7 @@ class PassageVerdict(BaseModel):
 class PassageVerdicts(BaseModel):
     """What the context precision judge returns."""
 
-    verdicts: list[PassageVerdict] = Field(
+    verdicts: Annotated[list[PassageVerdict], _OR_JSON_STRING] = Field(
         description="One verdict for each numbered passage, in the same order"
     )
 
@@ -278,7 +299,7 @@ class PassageVerdicts(BaseModel):
 class AnswerClaims(BaseModel):
     """What the faithfulness judge returns first: the claims it finds in the answer."""
 
-    claims: list[str] = Field(
+    claims: Annotated[list[str], _OR_JSON_STRING] = Field(
         description="Every factual claim the answer makes, one fact each; empty when it makes none"
     )
 
@@ -295,7 +316,7 @@ class ClaimVerdict(BaseModel):
 class ClaimVerdicts(BaseModel):
     """What the faithfulness judge returns second."""
 
-    verdicts: list[ClaimVerdict] = Field(
+    verdicts: Annotated[list[ClaimVerdict], _OR_JSON_STRING] = Field(
         description="One verdict for each numbered claim, in the same order"
     )
 
@@ -303,7 +324,9 @@ class ClaimVerdicts(BaseModel):
 class GeneratedQuestions(BaseModel):
     """What the answer relevance judge returns."""
 
-    questions: list[str] = Field(description="Questions this answer would answer completely")
+    questions: Annotated[list[str], _OR_JSON_STRING] = Field(
+        description="Questions this answer would answer completely"
+    )
     noncommittal: bool = Field(
         description="True when the answer avoids answering, or says the information is unavailable"
     )
