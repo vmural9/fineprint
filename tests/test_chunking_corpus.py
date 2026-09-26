@@ -91,6 +91,31 @@ TABLE_QUESTIONS = {
 }
 
 
+# Headings read off the printed pages by hand and copied from the extracted text, so that the
+# tests do not rest only on the chunker's own idea of a heading. A heading printed over two
+# lines is joined by a space.
+HANDBOOK_HEADINGS = [
+    (23, "How much does Part B coverage cost?"),
+    (23, "What\u2019s the Part B late enrollment penalty?"),
+    (23, "How can I pay my Part B premium?"),
+    (32, "Bariatric surgery"),
+    (40, "Durable medical equipment (DME)"),
+    (40, "Electrocardiogram (EKG or ECG) screenings"),
+    (53, "Travel"),
+    (53, "Urgently needed care"),
+    (53, "Virtual check-ins"),
+    (82, "Monthly premium"),
+    (82, "Yearly deductible"),
+    (83, "What\u2019s the Medicare drug coverage (Part D) late enrollment penalty?"),
+    (88, "Medication Therapy Management services"),
+    (88, "Part D coverage for insulin"),
+    (88, "How do other insurance and programs work with Medicare drug coverage (Part D)?"),
+    (88, "Employer or union coverage"),
+    (113, "Department of Veterans Affairs (VA)"),
+    (113, "Office of Personnel Management"),
+]
+
+
 def golden_items() -> dict[str, dict]:
     """The golden set's questions by id."""
     with GOLDEN_SET.open(encoding="utf-8") as lines:
@@ -152,6 +177,24 @@ def test_a_heading_only_ever_opens_a_chunk(blocks: list[Block], chunks: list[Chu
 
     assert [block for block in blocks if block.kind == "heading"], "the handbook has headings"
     assert buried == []
+
+
+@pytest.mark.parametrize(
+    ("page_number", "heading"), HANDBOOK_HEADINGS, ids=[heading for _, heading in HANDBOOK_HEADINGS]
+)
+def test_a_heading_checked_by_hand_opens_a_chunk_on_its_page(
+    page_number: int, heading: str, pages: list[Page], chunks: list[Chunk]
+):
+    """A heading the chunker misses would sit inside the chunk of the heading before it."""
+    assert heading in collapse(pages[page_number - 1].text), "the heading is the handbook's words"
+
+    opened = [
+        chunk.page_start
+        for chunk in chunks
+        if chunk.text == heading or chunk.text.startswith(f"{heading} ")
+    ]
+
+    assert page_number in opened
 
 
 def test_only_a_table_or_a_heading_takes_a_chunk_past_max_words(
