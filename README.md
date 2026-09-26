@@ -28,9 +28,9 @@ code that produced them.
 scoreboard below are all on `main`. Three retrieval configurations have been run against the real
 corpus and their results files are committed.
 
-Two things part 1 still owes. I have not yet graded the `hybrid` answers with
-`python -m evals.review`, so the scoreboard's **Manual pass** column is empty; and the walkthrough
-video has not been recorded. Until both are done there is no `part-1` tag.
+One thing part 1 still owes: I have not yet graded the `hybrid` answers with
+`python -m evals.review`, so the scoreboard's **Manual pass** column is empty. Until that is done
+there is no `part-1` tag.
 
 Part 2 has not started.
 
@@ -38,14 +38,11 @@ Part 2 has not started.
 
 | Part | What it adds | Status |
 |------|--------------|--------|
-| 1. RAG service | Ingestion into Postgres with pgvector, hybrid retrieval with reciprocal rank fusion, FastAPI `/ask` and `/search`, structured answers with cited pages, golden set v1, the first scoreboard | built; manual review and video outstanding |
+| 1. RAG service | Ingestion into Postgres with pgvector, hybrid retrieval with reciprocal rank fusion, FastAPI `/ask` and `/search`, structured answers with cited pages, golden set v1, the first scoreboard | built; manual review outstanding |
 | 2. Retrieval quality | RAGAS metrics on the golden set; fixed-size chunking against structure-aware chunking against a cross-encoder re-ranker, side by side | planned |
 | 3. Observability and agent | Langfuse tracing on every LLM and tool call; a two-tool agent over the retriever; provider retries, timeouts and fallback; cost and p95 latency | planned |
 | 4. Eval gate | Calibrated LLM-as-judge rubric, an adversarial slice, deterministic tool-call assertions, promptfoo in GitHub Actions with pass/fail thresholds | planned |
 | 5. Online evaluation (optional) | Scoring on sampled live traffic with alerts on score drops | planned |
-
-The full plan, with a definition of done for each part, is in [docs/PLAN.md](docs/PLAN.md). The
-build spec for part 1 is [docs/parts/01-rag-service.md](docs/parts/01-rag-service.md).
 
 ## Scoreboard
 
@@ -130,7 +127,6 @@ programs — the runner, the manual review tool, and the scoreboard generator th
 
 There is no ORM and no RAG framework anywhere in `src/fineprint/`: plain Python, plain SQL, and one
 thin provider abstraction so part 3 can add retries and a second provider without touching the rest.
-[docs/how-it-works.md](docs/how-it-works.md) walks one question through every step.
 
 ### Run it end to end
 
@@ -338,11 +334,6 @@ verifying the hash before it writes anything into place.
 ## Repo layout
 
 ```
-
-docs/PLAN.md                  the whole series, with a definition of done per part
-docs/parts/                   build spec per part, written when that part starts
-docs/how-it-works.md          one question walked through every step of the system
-docs/scripts/                 video scripts, written after each part is built
 src/fineprint/                the service: config, db, schema.sql, pdf, chunking, providers,
                               ingest, retrieval, answer, api, cli
 evals/                        golden set, metrics, runner, review tool, scoreboard generator

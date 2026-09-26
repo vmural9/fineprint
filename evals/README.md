@@ -103,8 +103,7 @@ uv run python -m evals.scoreboard                                         # rege
   when either file is out of date, which is what stops a hand edit. Neither file is ever edited
   by hand: if a number is wrong, fix the results or the generator and run it again.
 
-The metrics are defined in `metrics.py`, one short function each, and in "Eval design" in
-[docs/parts/01-rag-service.md](../docs/parts/01-rag-service.md):
+The metrics are defined in `metrics.py`, one short function each:
 
 | Metric | What it asks |
 |--------|--------------|

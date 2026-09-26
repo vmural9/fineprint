@@ -17,7 +17,7 @@ class Page:
 
     `number` is the 1-based PDF page index. In "Medicare & You 2026" that is also the number
     printed on the page for every numbered page, so nothing in this project translates between
-    the two; see "Corpus facts" in `docs/parts/01-rag-service.md`.
+    the two: printed page N is PDF page N for pages 2 to 126.
     """
 
     number: int

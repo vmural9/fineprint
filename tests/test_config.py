@@ -81,7 +81,7 @@ def test_a_setting_that_is_not_a_number_is_rejected(clean_environment, monkeypat
 
 
 def test_no_setting_is_a_secret(clean_environment):
-    """Secrets come from the environment only and never have a default (a hard rule of this project)."""
+    """Secrets come from the environment only and never have a default (project rule 3)."""
     secret_words = ("key", "secret", "token", "password", "credential")
     secrets = [name for name in Settings.model_fields if any(word in name for word in secret_words)]
 
