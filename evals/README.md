@@ -75,14 +75,43 @@ uv run python -m evals.verify_golden_set   # re-extract the cited pages and chec
 page number does not check out, and 2 when the handbook PDF is missing, naming
 `scripts/download_handbook.py`. Pass `--pdf PATH` to check against a different copy.
 
+## Configurations
+
+`evals/configs.py` registers six named configurations, and `run_golden_set --config` names one of
+them. Each is a fixed bundle of which chunk set to search, which retrieval mode to search it in,
+and whether a re-ranker re-orders the fused list before the top-5 cut:
+
+| Configuration | Chunk set | Mode | Re-ranker |
+|---|---|---|---|
+| `hybrid` | `fixed-220w` | hybrid | — |
+| `vector-only` | `fixed-220w` | vector | — |
+| `lexical-only` | `fixed-220w` | lexical | — |
+| `hybrid+rerank` | `fixed-220w` | hybrid | Cohere Rerank 3.5 |
+| `sections` | `sections` | hybrid | — |
+| `sections+rerank` | `sections` | hybrid | Cohere Rerank 3.5 |
+
+`fixed-220w` cuts the handbook into fixed-size, roughly 220-word chunks; `sections` cuts at the
+handbook's own headings instead, so a table or a list stays whole in one chunk. `hybrid` fuses
+lexical and vector search by reciprocal rank fusion; `vector-only` and `lexical-only` run one
+retriever alone, which is how the scoreboard shows what fusion adds. The three names on the left
+are part 1's, kept exactly so their committed results files still key to the same rows.
+
+`settings_for(config, base)` turns a configuration into the `Settings` a run makes its Postgres
+and Bedrock calls with: it sets the chunk set, and, for the two `+rerank` configurations, turns
+the re-ranker on with its model. Everything else `base` already had — the database, the region,
+how many fused candidates a re-ranker reads — is left alone.
+
 ## Running an eval
 
 Run, review, regenerate — in that order. They need an ingested corpus, and the runs call AWS
-Bedrock: every mode that searches by meaning embeds each question, and `hybrid` also sends the
-retrieved chunks to the answer model. `lexical-only` is the one configuration that calls nothing.
+Bedrock: every mode that searches by meaning embeds each question, a configured re-ranker sends
+one more request per question, and `hybrid` also sends the retrieved chunks to the answer model.
+`lexical-only` is the one configuration that calls nothing.
 
 ```bash
 uv run python -m evals.run_golden_set --config hybrid                     # search, answer, score
+uv run python -m evals.run_golden_set --config hybrid+rerank
+uv run python -m evals.run_golden_set --config sections
 uv run python -m evals.run_golden_set --config vector-only --retrieval-only
 uv run python -m evals.run_golden_set --config lexical-only --retrieval-only   # no model at all
 uv run python -m evals.review evals/results/<run_id>.json                 # your pass or fail
@@ -90,10 +119,12 @@ uv run python -m evals.scoreboard                                         # rege
 ```
 
 - **`run_golden_set`** writes `evals/results/<run_id>.json`, where `run_id` is
-  `<UTC timestamp>_<config name>`. The file records the commit and whether the tree was dirty,
-  the whole configuration, the corpus and golden-set hashes, and, per question, the chunks that
-  came back with their ranks, the metrics, the full answer, and the manual verdict. One
-  question failing is recorded on that question; the run carries on.
+  `<UTC timestamp>_<config name>` (a name may itself contain a `+`, as in `hybrid+rerank`). The
+  file records the commit and whether the tree was dirty, the whole configuration — including,
+  from part 2 on, the re-ranker model and how many candidates it read, when one ran — the corpus
+  and golden-set hashes, and, per question, every chunk that came back with its text, its
+  ordinal, its section heading and its ranks, the metrics, the full answer, and the manual
+  verdict. One question failing is recorded on that question; the run carries on.
 - **`review`** shows each answered question with its expected answer, the generated answer, the
   pages it cited and whether each quote was verified, and reads `p`, `f`, `s` or `q` plus an
   optional note. It saves after every verdict. `--only-unreviewed` picks up where you left off.
@@ -113,10 +144,22 @@ The metrics are defined in `metrics.py`, one short function each:
 | `cited_page_hit` | Did the answer's own citations land on a page the answer needs? |
 | `abstention_accuracy` | Was "the handbook does not say this" right, on every answered question? |
 | `manual_pass` | Of the answers a person read, what share were right? |
+| `context_recall` | What share of the expected answer's sentences do the retrieved passages support? |
+| `context_precision` | Of the retrieved passages, how many actually help reach the expected answer, weighted by rank? |
+| `faithfulness` | What share of the generated answer's own claims are supported by the retrieved passages? |
+| `answer_relevance` | How closely do questions written back from the answer match the one actually asked? |
 
 Retrieval metrics are computed over the answerable questions only: an `unanswerable` item has
 no expected pages, and what it measures is abstention. A metric that does not apply to a
 question is left empty rather than scored zero, so it never drags an average down.
+
+The last four are judged by a language model rather than computed from page numbers. A results
+file carries a field for each, per question, and a `scoring` block naming the judge model, the
+embedding model `answer_relevance` compares with, a hash of the prompts that judged it, and when
+it ran — all `null` until a scoring pass has filled them in, the same way `manual_pass` prints
+`—` before anyone has reviewed an answer. Each question also carries a `scoring_detail` object
+for the judge's own verdicts behind its four scores — which sentences and claims it found, and
+why — empty until then.
 
 ## Candidate-rank diagnostic
 
