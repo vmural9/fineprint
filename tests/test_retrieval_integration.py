@@ -414,16 +414,37 @@ def test_the_reranker_reads_only_the_first_rerank_candidates_of_the_pool(
     retriever = Retriever(
         pool,
         FakeEmbedder(),
+        settings.model_copy(update={"rerank_candidates": 3}),
+        reranker=reranker,
+    )
+
+    results = retriever.search(COMPLAINT_QUESTION, top_k=2)
+
+    shortlist = retriever.candidates(COMPLAINT_QUESTION)[:3]
+    (call,) = reranker.calls
+    assert call.documents == [chunk.text for chunk in shortlist]
+    assert len(results) == 2
+    assert {result.chunk_id for result in results} <= {chunk.chunk_id for chunk in shortlist}
+
+
+def test_a_top_k_above_rerank_candidates_still_gets_top_k_results(
+    pool: ConnectionPool, settings: Settings, chunk_ids: dict[str, int]
+):
+    """The re-ranker reads at least `top_k` candidates, so asking for more results than
+    `RERANK_CANDIDATES` widens what it reads instead of returning fewer than were asked for."""
+    reranker = FakeReranker()
+    retriever = Retriever(
+        pool,
+        FakeEmbedder(),
         settings.model_copy(update={"rerank_candidates": 2}),
         reranker=reranker,
     )
 
-    results = retriever.search(COMPLAINT_QUESTION)
+    results = retriever.search(COMPLAINT_QUESTION, top_k=3)
 
-    shortlist = retriever.candidates(COMPLAINT_QUESTION)[:2]
     (call,) = reranker.calls
-    assert call.documents == [chunk.text for chunk in shortlist]
-    assert {result.chunk_id for result in results} == {chunk.chunk_id for chunk in shortlist}
+    assert len(call.documents) == 3
+    assert len(results) == 3
 
 
 @pytest.mark.parametrize("mode", ["vector", "lexical"])
