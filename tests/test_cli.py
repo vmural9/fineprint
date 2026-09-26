@@ -184,6 +184,8 @@ PREMIUM_QUOTE = "The standard Part B premium amount in 2026 is $202.90."
 CHUNKS = [
     RetrievedChunk(
         chunk_id=61,
+        ordinal=60,
+        section=None,
         page_start=23,
         page_end=23,
         text=PREMIUM_TEXT,
@@ -191,9 +193,13 @@ CHUNKS = [
         rank=1,
         lexical_rank=1,
         vector_rank=2,
+        fused_rank=1,
+        rerank_score=None,
     ),
     RetrievedChunk(
         chunk_id=118,
+        ordinal=117,
+        section=None,
         page_start=42,
         page_end=43,
         text=HEARING_TEXT,
@@ -201,6 +207,8 @@ CHUNKS = [
         rank=2,
         lexical_rank=None,
         vector_rank=4,
+        fused_rank=2,
+        rerank_score=None,
     ),
 ]
 

@@ -43,6 +43,8 @@ IRMAA_TEXT = (
 
 PREMIUM = RetrievedChunk(
     chunk_id=61,
+    ordinal=60,
+    section=None,
     page_start=23,
     page_end=23,
     text=PREMIUM_TEXT,
@@ -50,9 +52,13 @@ PREMIUM = RetrievedChunk(
     rank=1,
     lexical_rank=1,
     vector_rank=2,
+    fused_rank=1,
+    rerank_score=None,
 )
 IRMAA = RetrievedChunk(
     chunk_id=62,
+    ordinal=61,
+    section=None,
     page_start=23,
     page_end=24,
     text=IRMAA_TEXT,
@@ -60,9 +66,13 @@ IRMAA = RetrievedChunk(
     rank=2,
     lexical_rank=3,
     vector_rank=1,
+    fused_rank=2,
+    rerank_score=None,
 )
 HEARING = RetrievedChunk(
     chunk_id=118,
+    ordinal=117,
+    section=None,
     page_start=42,
     page_end=42,
     text=HEARING_TEXT,
@@ -70,6 +80,8 @@ HEARING = RetrievedChunk(
     rank=3,
     lexical_rank=None,
     vector_rank=4,
+    fused_rank=3,
+    rerank_score=None,
 )
 
 
