@@ -22,8 +22,13 @@ from fineprint.providers.base import LLMResult
 from fineprint.retrieval import EditionNotIngestedError, RetrievedChunk
 from tests.fakes import FakeChatModel
 
+# The heading the premium passage sits under on page 23 of the handbook.
+PREMIUM_SECTION = "How much does Part B coverage cost?"
+
 PREMIUM = RetrievedChunk(
     chunk_id=61,
+    ordinal=60,
+    section=PREMIUM_SECTION,
     page_start=23,
     page_end=23,
     text="The standard Part B premium amount in 2026 is $202.90.",
@@ -31,6 +36,8 @@ PREMIUM = RetrievedChunk(
     rank=1,
     lexical_rank=1,
     vector_rank=2,
+    fused_rank=1,
+    rerank_score=None,
 )
 
 DRAFT = DraftAnswer(

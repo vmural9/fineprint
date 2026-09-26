@@ -18,11 +18,17 @@ reads only each chunk's position in each list. That is deliberate: `ts_rank_cd` 
 similarities are on different scales, so adding them would be meaningless, while positions are
 comparable by construction.
 
+*Re-ranking* is an optional last step in hybrid mode. Neither retriever reads a chunk beside the
+question: one counts shared words, the other compares two vectors made separately. A re-ranker
+reads the two together, so it can tell the passage that answers the question from one that only
+talks about the same thing. Reading every pair costs far more than comparing vectors, so it reads
+only the first `RERANK_CANDIDATES` of the fused list, and its order decides which `top_k` are kept.
+
 The ranking Postgres does here is its own built-in `ts_rank_cd`, not BM25 (see decision D3), so
 everything in this module calls it "lexical" and never "BM25".
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal, NamedTuple
 
 from pgvector import Vector
@@ -30,7 +36,7 @@ from psycopg_pool import ConnectionPool
 
 from fineprint.config import Settings
 from fineprint.db import describe_database
-from fineprint.providers.base import Embedder
+from fineprint.providers.base import Embedder, Reranker
 
 SearchMode = Literal["hybrid", "vector", "lexical"]
 SEARCH_MODES: tuple[SearchMode, ...] = ("hybrid", "vector", "lexical")
@@ -69,7 +75,9 @@ ORDER BY embedding <=> %(query_vector)s, id
 LIMIT %(limit)s
 """
 
-CHUNK_BODIES_SQL = "SELECT id, page_start, page_end, text FROM chunks WHERE id = ANY(%s)"
+CHUNK_BODIES_SQL = (
+    "SELECT id, ordinal, section, page_start, page_end, text FROM chunks WHERE id = ANY(%s)"
+)
 
 
 class Hit(NamedTuple):
@@ -83,6 +91,8 @@ class Hit(NamedTuple):
 class ChunkBody(NamedTuple):
     """The stored columns a result carries besides its ranks."""
 
+    ordinal: int
+    section: str | None
     page_start: int
     page_end: int
     text: str
@@ -92,13 +102,22 @@ class ChunkBody(NamedTuple):
 class RetrievedChunk:
     """A chunk a search returned, with where it stood in each list that found it.
 
-    `score` is the fused score in hybrid mode and the retriever's own score otherwise.
-    `lexical_rank` and `vector_rank` are None when that retriever did not return this chunk —
-    which is always the case for the retriever a single-mode search never ran. Keeping both is
-    what lets `/search` show a reader why a passage is here.
+    `ordinal` is the chunk's place in its chunk set, which survives a re-ingest where
+    `chunk_id` does not, and `section` is the heading it sits under when its chunker records one.
+
+    `score` is the re-ranker's score when a re-ranker ran, the fused score in hybrid mode
+    otherwise, and the retriever's own score in a single mode. `rank` is the chunk's place in
+    the list that was returned. `lexical_rank` and `vector_rank` are None when that retriever
+    did not return this chunk — which is always the case for the retriever a single-mode
+    search never ran. `fused_rank` is its place after fusion and before any re-ranking, so it
+    is None outside hybrid mode and equals `rank` when nothing re-ranked the list;
+    `rerank_score` is None when no re-ranker ran. Keeping every rank is what lets `/search`
+    show a reader why a passage is here, and how far the re-ranker moved it.
     """
 
     chunk_id: int
+    ordinal: int
+    section: str | None
     page_start: int
     page_end: int
     text: str
@@ -106,6 +125,8 @@ class RetrievedChunk:
     rank: int
     lexical_rank: int | None
     vector_rank: int | None
+    fused_rank: int | None
+    rerank_score: float | None
 
 
 class EditionNotIngestedError(RuntimeError):
@@ -133,14 +154,22 @@ def rrf_fuse(rankings: list[list[int]], k: int = 60) -> list[tuple[int, float]]:
 class Retriever:
     """Searches one edition's chunks, by words, by meaning, or by both.
 
-    Holds the connection pool, the embedder that turns a question into a vector, and the
-    settings that say which edition and which chunk set every query is restricted to.
+    Holds the connection pool, the embedder that turns a question into a vector, the settings
+    that say which edition and which chunk set every query is restricted to, and the re-ranker
+    that re-orders hybrid results, if one is configured.
     """
 
-    def __init__(self, pool: ConnectionPool, embedder: Embedder, settings: Settings) -> None:
+    def __init__(
+        self,
+        pool: ConnectionPool,
+        embedder: Embedder,
+        settings: Settings,
+        reranker: Reranker | None = None,
+    ) -> None:
         self.pool = pool
         self.embedder = embedder
         self.settings = settings
+        self.reranker = reranker
         self._document_id: int | None = None
 
     @property
@@ -212,13 +241,36 @@ class Retriever:
     ) -> list[RetrievedChunk]:
         """The best `top_k` chunks for a question.
 
-        Each retriever is asked for `RETRIEVAL_CANDIDATES` rows so fusion has something to work
-        with, and only the survivors are read out of the table. `vector` and `lexical` run one
-        retriever and return its own scores; `hybrid` runs both and fuses them.
+        Without a re-ranker, these are the first `top_k` of `candidates()`. With one, in hybrid
+        mode, the re-ranker reads the question beside each of the first `RERANK_CANDIDATES`
+        and the best `top_k` are kept in its order. Each keeps its fused rank, and its score
+        becomes the re-ranker's. `vector` and `lexical` are never re-ranked: they exist to
+        measure one retriever on its own.
+        """
+        kept = self.settings.retrieval_top_k if top_k is None else top_k
+        ordered = self.candidates(question, mode)
+        if self.reranker is None or mode != "hybrid":
+            return ordered[:kept]
+
+        shortlist = ordered[: self.settings.rerank_candidates]
+        reranked = self.reranker.rerank(question, [chunk.text for chunk in shortlist], top_n=kept)
+        return [
+            replace(
+                shortlist[result.index], score=result.score, rank=rank, rerank_score=result.score
+            )
+            for rank, result in enumerate(reranked[:kept], start=1)
+        ]
+
+    def candidates(self, question: str, mode: SearchMode = "hybrid") -> list[RetrievedChunk]:
+        """Every chunk the search found, in order, with its text: the pool `search` cuts from.
+
+        Each retriever is asked for `RETRIEVAL_CANDIDATES` rows. `hybrid` runs both and fuses
+        them; `vector` and `lexical` run one and keep its own scores. Nothing is re-ranked or
+        cut here, so a caller can see where a chunk stood even when it missed the top `k`.
+        `rank` is the place in this pool, and in hybrid mode `fused_rank` is the same.
         """
         if mode not in SEARCH_MODES:
             raise ValueError(f"mode must be one of {', '.join(SEARCH_MODES)}, not {mode!r}")
-        kept = self.settings.retrieval_top_k if top_k is None else top_k
 
         lexical = self.search_lexical(question) if mode in ("hybrid", "lexical") else []
         vector = self.search_vector(question) if mode in ("hybrid", "vector") else []
@@ -231,32 +283,47 @@ class Retriever:
         else:
             hits = lexical if mode == "lexical" else vector
             ordered = [(hit.chunk_id, hit.score) for hit in hits]
-        ordered = ordered[:kept]
 
         lexical_ranks = {hit.chunk_id: hit.rank for hit in lexical}
         vector_ranks = {hit.chunk_id: hit.rank for hit in vector}
         bodies = self._load_chunk_bodies([chunk_id for chunk_id, _ in ordered])
-        return [
-            RetrievedChunk(
-                chunk_id=chunk_id,
-                page_start=bodies[chunk_id].page_start,
-                page_end=bodies[chunk_id].page_end,
-                text=bodies[chunk_id].text,
-                score=score,
-                rank=rank,
-                lexical_rank=lexical_ranks.get(chunk_id),
-                vector_rank=vector_ranks.get(chunk_id),
+
+        results: list[RetrievedChunk] = []
+        for chunk_id, score in ordered:
+            body = bodies.get(chunk_id)
+            if body is None:
+                # A re-ingest deleted this chunk after the ranking query saw it. Leave it out;
+                # the ones after it move up, so ranks stay 1, 2, 3 with no gap.
+                continue
+            rank = len(results) + 1
+            results.append(
+                RetrievedChunk(
+                    chunk_id=chunk_id,
+                    ordinal=body.ordinal,
+                    section=body.section,
+                    page_start=body.page_start,
+                    page_end=body.page_end,
+                    text=body.text,
+                    score=score,
+                    rank=rank,
+                    lexical_rank=lexical_ranks.get(chunk_id),
+                    vector_rank=vector_ranks.get(chunk_id),
+                    fused_rank=rank if mode == "hybrid" else None,
+                    rerank_score=None,
+                )
             )
-            for rank, (chunk_id, score) in enumerate(ordered, start=1)
-        ]
+        return results
 
     def _load_chunk_bodies(self, chunk_ids: list[int]) -> dict[int, ChunkBody]:
-        """Pages and text for the chunks that survived, in one query."""
+        """The stored columns of these chunks, in one query, keyed by id.
+
+        An id the table no longer holds is simply absent from the result.
+        """
         if not chunk_ids:
             return {}
         with self.pool.connection() as connection:
             rows = connection.execute(CHUNK_BODIES_SQL, (chunk_ids,)).fetchall()
         return {
-            chunk_id: ChunkBody(page_start, page_end, text)
-            for chunk_id, page_start, page_end, text in rows
+            chunk_id: ChunkBody(ordinal, section, page_start, page_end, text)
+            for chunk_id, ordinal, section, page_start, page_end, text in rows
         }

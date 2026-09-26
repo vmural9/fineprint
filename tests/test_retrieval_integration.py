@@ -12,8 +12,8 @@ from pgvector import Vector
 from psycopg_pool import ConnectionPool
 
 from fineprint.config import Settings
-from fineprint.retrieval import EditionNotIngestedError, Retriever
-from tests.fakes import FakeEmbedder
+from fineprint.retrieval import EditionNotIngestedError, Hit, Retriever
+from tests.fakes import FakeEmbedder, FakeReranker
 
 pytestmark = pytest.mark.integration
 
@@ -233,3 +233,238 @@ def test_an_edition_that_was_never_ingested_says_how_to_ingest_it(
     message = str(excinfo.value)
     assert "1999" in message
     assert "fineprint ingest --edition 1999" in message
+
+
+# --- what each result carries -----------------------------------------------------------
+
+# The heading the premium passage sits under on page 23 of the handbook.
+PREMIUM_SECTION = "How much does Part B coverage cost?"
+
+
+def test_each_result_carries_its_ordinal_and_section(
+    pool: ConnectionPool, retriever: Retriever, chunk_ids: dict[str, int]
+):
+    """`ordinal` is the chunk's place in its chunk set, which a re-ingest keeps and `chunk_id`
+    does not. `section` is the heading above it, or None when the chunker records none."""
+    with pool.connection() as connection:
+        connection.execute(
+            "UPDATE chunks SET section = %s WHERE id = %s",
+            (PREMIUM_SECTION, chunk_ids["premium"]),
+        )
+
+    results = retriever.search("Part B premium", mode="vector", top_k=len(CHUNKS))
+
+    assert {result.chunk_id: result.ordinal for result in results} == {
+        chunk_ids[label]: ordinal for ordinal, label in enumerate(CHUNKS)
+    }
+    assert {result.chunk_id: result.section for result in results} == {
+        chunk_id: PREMIUM_SECTION if label == "premium" else None
+        for label, chunk_id in chunk_ids.items()
+    }
+
+
+@pytest.mark.parametrize("mode", ["hybrid", "vector", "lexical"])
+def test_without_a_reranker_only_hybrid_results_have_a_fused_rank(retriever: Retriever, mode: str):
+    """Only hybrid mode fuses two lists. With nothing after fusion, the fused rank is the rank."""
+    results = retriever.search(CHUNKS["premium"][2], mode=mode)
+
+    assert results
+    assert [result.fused_rank for result in results] == [
+        result.rank if mode == "hybrid" else None for result in results
+    ]
+    assert all(result.rerank_score is None for result in results)
+
+
+# --- the candidate pool -----------------------------------------------------------------
+
+
+def test_candidates_is_the_whole_pool_in_order_before_re_ranking_and_the_cut(
+    pool: ConnectionPool, settings: Settings, chunk_ids: dict[str, int]
+):
+    """Vector search reaches all four passages, so the hybrid pool holds all four whatever
+    `RETRIEVAL_TOP_K` says, and the re-ranker is not asked about any of them."""
+    reranker = FakeReranker()
+    retriever = Retriever(pool, FakeEmbedder(), settings, reranker=reranker)
+
+    fused = retriever.candidates("What is the inpatient deductible?")
+
+    assert sorted(chunk.chunk_id for chunk in fused) == sorted(chunk_ids.values())
+    assert [chunk.rank for chunk in fused] == [1, 2, 3, 4]
+    assert [chunk.fused_rank for chunk in fused] == [1, 2, 3, 4]
+    assert all(chunk.text and chunk.rerank_score is None for chunk in fused)
+    assert reranker.calls == []
+
+
+@pytest.mark.parametrize("mode", ["hybrid", "vector", "lexical"])
+def test_without_a_reranker_a_search_keeps_the_head_of_the_pool(retriever: Retriever, mode: str):
+    """The cut to `top_k` is the last step, taken after every candidate's text has been read."""
+    question = "What is the inpatient deductible?"
+
+    results = retriever.search(question, mode=mode, top_k=2)
+
+    assert results == retriever.candidates(question, mode=mode)[:2]
+
+
+# --- re-ranking -------------------------------------------------------------------------
+
+
+def ranked(chunk_ids: list[int]) -> list[Hit]:
+    """Hits in the order given, with scores that fall as the rank rises, as a real list's do."""
+    return [Hit(chunk_id, rank, 1.0 / rank) for rank, chunk_id in enumerate(chunk_ids, start=1)]
+
+
+class HandRankedRetriever(Retriever):
+    """A retriever whose two ranking queries return lists the test writes down.
+
+    With the fake embedder the vector order is whatever the hashes make it, so to know in
+    advance where fusion puts each chunk the two rankings are fixed here. Everything after
+    them is the real code against the real table: fusion, reading the chunks, re-ranking and
+    the cut.
+    """
+
+    def __init__(
+        self,
+        pool: ConnectionPool,
+        settings: Settings,
+        reranker: FakeReranker,
+        *,
+        lexical: list[int],
+        vector: list[int],
+    ) -> None:
+        super().__init__(pool, FakeEmbedder(), settings, reranker=reranker)
+        self.lexical_order = lexical
+        self.vector_order = vector
+
+    def search_lexical(self, question: str, limit: int | None = None) -> list[Hit]:
+        return ranked(self.lexical_order)
+
+    def search_vector(self, question: str, limit: int | None = None) -> list[Hit]:
+        return ranked(self.vector_order)
+
+
+# The helpline passage answers this question, and it shares more of its words than any other.
+COMPLAINT_QUESTION = "Who do I call to file a complaint?"
+
+
+def helpline_buried(
+    pool: ConnectionPool, settings: Settings, chunk_ids: dict[str, int], reranker: FakeReranker
+) -> HandRankedRetriever:
+    """Rankings in which fusion puts the helpline passage fourth of four.
+
+    The other three passages are in both lists and the helpline passage is only in the vector
+    list, last. A chunk both retrievers found always fuses above one that only one of them found.
+    """
+    found_by_both = [chunk_ids["premium"], chunk_ids["hospital"], chunk_ids["drugs"]]
+    return HandRankedRetriever(
+        pool,
+        settings,
+        reranker,
+        lexical=found_by_both,
+        vector=[*found_by_both, chunk_ids["helpline"]],
+    )
+
+
+def test_the_reranker_lifts_a_chunk_from_fused_rank_4_to_rank_1(
+    pool: ConnectionPool, settings: Settings, chunk_ids: dict[str, int]
+):
+    reranker = FakeReranker()
+    retriever = helpline_buried(pool, settings, chunk_ids, reranker)
+
+    results = retriever.search(COMPLAINT_QUESTION)
+
+    (call,) = reranker.calls
+    assert call.query == COMPLAINT_QUESTION
+    assert call.documents == [
+        CHUNKS[label][2] for label in ("premium", "hospital", "drugs", "helpline")
+    ], "the re-ranker reads the pool in fused order"
+    top = results[0]
+    assert top.chunk_id == chunk_ids["helpline"]
+    assert (top.rank, top.fused_rank) == (1, 4)
+    assert top.score == top.rerank_score
+    assert (top.lexical_rank, top.vector_rank) == (None, 4), "each retriever's rank is kept"
+    assert [result.rank for result in results] == [1, 2, 3, 4]
+    assert sorted(result.fused_rank for result in results) == [1, 2, 3, 4]
+    assert all(result.score == result.rerank_score for result in results)
+
+
+def test_the_cut_to_top_k_comes_after_re_ranking(
+    pool: ConnectionPool, settings: Settings, chunk_ids: dict[str, int]
+):
+    """The chunk fusion put fourth is the one result of a top-1 search: the re-ranker read all
+    four candidates, and only then was the list cut."""
+    reranker = FakeReranker()
+    retriever = helpline_buried(pool, settings, chunk_ids, reranker)
+
+    results = retriever.search(COMPLAINT_QUESTION, top_k=1)
+
+    assert [(result.chunk_id, result.rank, result.fused_rank) for result in results] == [
+        (chunk_ids["helpline"], 1, 4)
+    ]
+    (call,) = reranker.calls
+    assert len(call.documents) == 4
+    assert call.top_n == 1
+
+
+def test_the_reranker_reads_only_the_first_rerank_candidates_of_the_pool(
+    pool: ConnectionPool, settings: Settings, chunk_ids: dict[str, int]
+):
+    """`RERANK_CANDIDATES` caps how much of the pool the re-ranker reads. A chunk below the cap
+    stays out of the results, however well it would have scored."""
+    reranker = FakeReranker()
+    retriever = Retriever(
+        pool,
+        FakeEmbedder(),
+        settings.model_copy(update={"rerank_candidates": 2}),
+        reranker=reranker,
+    )
+
+    results = retriever.search(COMPLAINT_QUESTION)
+
+    shortlist = retriever.candidates(COMPLAINT_QUESTION)[:2]
+    (call,) = reranker.calls
+    assert call.documents == [chunk.text for chunk in shortlist]
+    assert {result.chunk_id for result in results} == {chunk.chunk_id for chunk in shortlist}
+
+
+@pytest.mark.parametrize("mode", ["vector", "lexical"])
+def test_a_single_retriever_mode_is_never_re_ranked(
+    pool: ConnectionPool, settings: Settings, chunk_ids: dict[str, int], mode: str
+):
+    """`vector` and `lexical` measure one retriever on its own, so a configured re-ranker leaves
+    them exactly as they would be without it."""
+    reranker = FakeReranker()
+    with_reranker = Retriever(pool, FakeEmbedder(), settings, reranker=reranker)
+    without = Retriever(pool, FakeEmbedder(), settings)
+
+    results = with_reranker.search(COMPLAINT_QUESTION, mode=mode)
+
+    assert results
+    assert reranker.calls == []
+    assert results == without.search(COMPLAINT_QUESTION, mode=mode)
+    assert all(result.fused_rank is None and result.rerank_score is None for result in results)
+
+
+# --- a chunk that disappears mid-search -------------------------------------------------
+
+
+def test_a_chunk_deleted_after_it_was_ranked_is_left_out(
+    pool: ConnectionPool, settings: Settings, chunk_ids: dict[str, int], monkeypatch
+):
+    """A re-ingest can delete a chunk between the query that ranks it and the query that reads
+    it. The search leaves that chunk out instead of failing, and the chunks after it move up."""
+    retriever = Retriever(pool, FakeEmbedder(), settings)
+    rank_by_meaning = retriever.search_vector
+
+    def rank_then_delete(question: str, limit: int | None = None) -> list[Hit]:
+        hits = rank_by_meaning(question, limit)
+        with pool.connection() as connection:
+            connection.execute("DELETE FROM chunks WHERE id = %s", (chunk_ids["premium"],))
+        return hits
+
+    monkeypatch.setattr(retriever, "search_vector", rank_then_delete)
+
+    results = retriever.search(CHUNKS["premium"][2])
+
+    assert chunk_ids["premium"] not in {result.chunk_id for result in results}
+    assert [result.rank for result in results] == [1, 2, 3]
+    assert [result.fused_rank for result in results] == [1, 2, 3]
