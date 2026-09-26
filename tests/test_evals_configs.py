@@ -1,5 +1,8 @@
 """Tests for the six named configurations and how each becomes a `Settings`."""
 
+import subprocess
+import sys
+
 import pytest
 
 from evals.configs import CONFIGS, RERANKER_MODEL, EvalConfig, settings_for
@@ -32,6 +35,18 @@ def test_each_configuration_matches_its_row_in_the_part_2_spec(name):
         mode,
         reranker,
     )
+
+
+def test_importing_this_module_does_not_load_the_retriever():
+    # `mode`'s type is `fineprint.retrieval.SearchMode`, imported only under TYPE_CHECKING: this
+    # module is the one every eval script imports for --config, so it must not need Postgres,
+    # boto3 or anthropic just to describe the command line.
+    program = "import sys; import evals.configs; print('fineprint.retrieval' in sys.modules)"
+    finished = subprocess.run(
+        [sys.executable, "-c", program], capture_output=True, text=True, check=True
+    )
+
+    assert finished.stdout.strip() == "False"
 
 
 def test_part_1s_three_names_are_kept_so_their_files_still_key_to_their_rows():
