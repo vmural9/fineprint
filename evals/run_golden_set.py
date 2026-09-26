@@ -13,7 +13,8 @@ Bedrock call per question. Only `lexical-only --retrieval-only` calls no model a
 
 A failure on one question is recorded on that question and the run carries on, so one bad
 question cannot cost a whole run. The metrics of a failed question are left empty rather than
-counted as zero, and the summary says how many failed.
+counted as zero, and the summary says how many failed. The results file is written either way;
+the process exit code is what tells a script or CI that a run was not clean.
 """
 
 import argparse
@@ -65,9 +66,10 @@ class Retriever(Protocol):
     ) -> Sequence[Any]: ...
 
 
-# Given a question, produce an `AnswerResponse`. The runner binds the retriever and the chat
-# model into it, so the loop only has to hand it a question.
-AnswerFunction = Callable[[str], Any]
+# Given a question and the chunks already retrieved for it, produce an `AnswerResponse`. The
+# runner binds the chat model into it, so the loop only has to hand it a question and the chunks
+# it already retrieved — retrieval happens once, in the loop below, never again inside the answer.
+AnswerFunction = Callable[[str, Sequence[Any]], Any]
 
 
 def run_questions(
@@ -123,7 +125,7 @@ def _run_one(
     answer = None
     if answer_fn is not None:
         try:
-            answer = answer_fn(item.question)
+            answer = answer_fn(item.question, chunks)
         except Exception as error:
             row.error = f"answering failed: {error}"
 
@@ -238,14 +240,19 @@ def build_retriever(settings: Settings, pool: Any) -> Retriever:
 
 
 def build_answer_function(settings: Settings, retriever: Retriever) -> AnswerFunction:
-    """Bind the retriever and the chat model into something that answers one question."""
+    """Bind the chat model into something that answers one question from its own chunks.
+
+    `retriever` is threaded through only because `answer_question` still requires one; passing
+    `chunks` means it never calls it, so the loop's own single retrieval is the only search each
+    question causes.
+    """
     from fineprint.answer import answer_question
     from fineprint.providers.factory import get_chat_model
 
     chat = get_chat_model(settings)
 
-    def answer(question: str) -> Any:
-        return answer_question(question, retriever, chat, top_k=settings.retrieval_top_k)
+    def answer(question: str, chunks: Sequence[Any]) -> Any:
+        return answer_question(question, retriever, chat, chunks=chunks)
 
     return answer
 
@@ -346,7 +353,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"\nwrote {path}")
     if not args.retrieval_only:
         print(f"next: python -m evals.review {path}")
-    return EXIT_OK
+    return EXIT_FAILED if result.errors else EXIT_OK
 
 
 if __name__ == "__main__":

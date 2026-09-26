@@ -226,7 +226,9 @@ def ask(request: AskRequest, retriever: RetrieverDep, chat: ChatDep) -> AnswerRe
     pointer to somewhere that does know. That is a successful request, not an error.
     """
     with provider_failures("answering"):
-        return answer_question(request.question, retriever, chat, top_k=request.top_k)
+        return answer_question(
+            request.question, retriever, chat, top_k=request.top_k, mode="hybrid"
+        )
 
 
 @app.get("/healthz", summary="Check the database connection")
