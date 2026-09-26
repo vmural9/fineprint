@@ -327,7 +327,7 @@ def test_aggregate_of_nothing_measures_nothing():
 
 
 def test_aggregate_means_the_four_ragas_metrics_when_they_are_present():
-    """Nothing in this module computes these yet — `evals/score.py` will. This only proves
+    """Nothing in this module computes these yet — a later scoring pass will. This only proves
     `aggregate` folds them in with the same None-ignoring mean as every other metric here, once
     they are filled: one answerable question scores on all four, one unanswerable question (D7)
     leaves them `None` and is skipped rather than counted as zero."""
