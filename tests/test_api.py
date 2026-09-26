@@ -1,14 +1,15 @@
 """Tests for the HTTP API.
 
 The app builds its pool, embedder, retriever and chat model in its lifespan handler, and
-`TestClient` runs that handler only when it is used as a context manager. These tests never
-do, so nothing here opens a database connection or builds an AWS client: each test replaces
-the pieces it needs through `app.dependency_overrides`, which is the same seam FastAPI is
-built around.
+`TestClient` runs that handler only when it is used as a context manager. Only the test of what
+that handler builds does so, with the pool replaced, so nothing here opens a database connection
+or builds an AWS client: every other test replaces the pieces it needs through
+`app.dependency_overrides`, which is the same seam FastAPI is built around.
 """
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 from typing import Any
 
 import psycopg
@@ -139,6 +140,8 @@ def test_search_returns_the_ranked_chunks_with_both_source_ranks(client: TestCli
     assert body["results"] == [
         {
             "chunk_id": 61,
+            "ordinal": 60,
+            "section": PREMIUM_SECTION,
             "page_start": 23,
             "page_end": 23,
             "text": "The standard Part B premium amount in 2026 is $202.90.",
@@ -146,8 +149,21 @@ def test_search_returns_the_ranked_chunks_with_both_source_ranks(client: TestCli
             "rank": 1,
             "lexical_rank": 1,
             "vector_rank": 2,
+            "fused_rank": 1,
+            "rerank_score": None,
         }
     ]
+
+
+def test_search_returns_where_a_re_ranked_chunk_stood_before_the_re_ranker(client: TestClient):
+    reranked = replace(PREMIUM, fused_rank=3, score=0.8803, rerank_score=0.8803)
+    override(get_retriever, FakeRetriever([reranked]))
+
+    response = client.post("/search", json={"query": "Part B premium"})
+
+    (hit,) = response.json()["results"]
+    assert (hit["rank"], hit["fused_rank"]) == (1, 3)
+    assert hit["score"] == hit["rerank_score"] == 0.8803
 
 
 def test_search_passes_the_mode_and_top_k_to_the_retriever(client: TestClient):
@@ -304,6 +320,31 @@ def test_healthz_does_not_print_the_database_password(client: TestClient):
 
     assert response.json()["database"] == "db.example:5432/handbook"
     assert "hunter2" not in response.text
+
+
+# --- what the service builds at startup --------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("provider", "model"), [("none", None), ("bedrock", "cohere.rerank-v3-5:0")]
+)
+def test_the_service_builds_its_retriever_with_the_configured_reranker(
+    monkeypatch, tmp_path, provider: str, model: str | None
+):
+    """Every provider builds its AWS client on first use, so only the pool needs replacing."""
+    monkeypatch.chdir(tmp_path)  # no .env can change what the settings say
+    monkeypatch.setenv("RERANKER_PROVIDER", provider)
+
+    @contextmanager
+    def fake_pool(database_url: str) -> Iterator[FakePool]:
+        yield FakePool()
+
+    monkeypatch.setattr("fineprint.api.connection_pool", fake_pool)
+
+    with TestClient(app):
+        reranker = app.state.retriever.reranker
+
+    assert (None if reranker is None else reranker.model) == model
 
 
 # --- the documented schemas -------------------------------------------------------------
