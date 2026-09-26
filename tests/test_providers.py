@@ -10,7 +10,13 @@ from fineprint.config import Settings
 from fineprint.providers.base import ChatModel, Embedder
 from fineprint.providers.bedrock_chat import BedrockChatModel
 from fineprint.providers.bedrock_embedder import BedrockEmbedder
-from fineprint.providers.factory import UnknownProviderError, get_chat_model, get_embedder
+from fineprint.providers.bedrock_reranker import BedrockReranker
+from fineprint.providers.factory import (
+    UnknownProviderError,
+    get_chat_model,
+    get_embedder,
+    get_reranker,
+)
 from tests.fakes import FakeChatModel, FakeEmbedder
 
 
@@ -59,6 +65,36 @@ def test_an_unknown_chat_provider_names_the_ones_that_exist():
     message = str(raised.value)
     assert "ollama" in message
     assert "LLM_PROVIDER" in message
+
+
+def test_get_reranker_returns_none_when_re_ranking_is_off():
+    # "none" is the default: retrieval then keeps the fused order, as it did before re-ranking.
+    assert get_reranker(Settings(reranker_provider="none")) is None
+
+
+def test_get_reranker_builds_the_bedrock_reranker_from_settings():
+    settings = Settings(
+        reranker_provider="bedrock", reranker_model="cohere.rerank-v3-5:0", aws_region="us-west-2"
+    )
+
+    reranker = get_reranker(settings)
+
+    assert isinstance(reranker, BedrockReranker)
+    assert reranker.model == "cohere.rerank-v3-5:0"
+    assert reranker.region == "us-west-2"
+
+
+def test_an_unknown_reranker_provider_names_the_ones_that_exist():
+    settings = Settings(reranker_provider="cohere")
+
+    with pytest.raises(UnknownProviderError) as raised:
+        get_reranker(settings)
+
+    message = str(raised.value)
+    assert "cohere" in message
+    assert "RERANKER_PROVIDER" in message
+    assert "bedrock" in message
+    assert "none" in message
 
 
 def test_importing_the_factory_does_not_import_a_provider_sdk():
