@@ -8,11 +8,12 @@ models. Import them as `from tests.fakes import FakeChatModel, FakeEmbedder`.
 import hashlib
 import math
 import random
+import re
 from typing import NamedTuple
 
 from pydantic import BaseModel
 
-from fineprint.providers.base import LLMResult
+from fineprint.providers.base import LLMResult, RerankResult
 
 
 class FakeEmbedder:
@@ -68,3 +69,38 @@ class FakeChatModel:
             output_tokens=self.output_tokens,
             latency_ms=12.5,
         )
+
+
+def _words(text: str) -> set[str]:
+    """The distinct words in `text`, lower-cased, so "Premium" and "premium" are one word."""
+    return set(re.findall(r"\w+", text.lower()))
+
+
+class FakeRerankCall(NamedTuple):
+    """One call made to `FakeReranker`, kept so a test can see what it was asked to rank."""
+
+    query: str
+    documents: list[str]
+    top_n: int
+
+
+class FakeReranker:
+    """Ranks passages by how many of the query's words each one contains.
+
+    Whole words, ignoring case, each query word counted once; a tie goes to the passage that
+    came first. Crude next to a real re-ranker, but it needs no network and a test can predict
+    its order exactly.
+    """
+
+    model = "fake-reranker"
+
+    def __init__(self) -> None:
+        self.calls: list[FakeRerankCall] = []
+
+    def rerank(self, query: str, documents: list[str], top_n: int) -> list[RerankResult]:
+        self.calls.append(FakeRerankCall(query, list(documents), top_n))
+        query_words = _words(query)
+        scores = [len(query_words & _words(document)) for document in documents]
+        # Sorting on (-score, index) puts the highest score first and breaks a tie by position.
+        order = sorted(range(len(documents)), key=lambda index: (-scores[index], index))
+        return [RerankResult(index=index, score=float(scores[index])) for index in order[:top_n]]
