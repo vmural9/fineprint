@@ -97,16 +97,18 @@ retriever alone, which is how the scoreboard shows what fusion adds. The three n
 are part 1's, kept exactly so their committed results files still key to the same rows.
 
 `settings_for(config, base)` turns a configuration into the `Settings` a run makes its Postgres
-and Bedrock calls with: it sets the chunk set, and, for the two `+rerank` configurations, turns
-the re-ranker on with its model. Everything else `base` already had — the database, the region,
-how many fused candidates a re-ranker reads — is left alone.
+and Bedrock calls with: it sets the chunk set, and turns the re-ranker on with its model for the
+two `+rerank` configurations — the other four (`hybrid`, `vector-only`, `lexical-only` and
+`sections`) run with the re-ranker off. Everything else `base` already had — the database, the
+region, how many fused candidates a re-ranker reads — is left alone.
 
 ## Running an eval
 
 Run, review, regenerate — in that order. They need an ingested corpus, and the runs call AWS
 Bedrock: every mode that searches by meaning embeds each question, a configured re-ranker sends
-one more request per question, and `hybrid` also sends the retrieved chunks to the answer model.
-`lexical-only` is the one configuration that calls nothing.
+one more request per question, and any run without `--retrieval-only` also sends the retrieved
+chunks to the answer model. `lexical-only --retrieval-only` is the one command that calls no
+model at all.
 
 ```bash
 uv run python -m evals.run_golden_set --config hybrid                     # search, answer, score
@@ -134,7 +136,8 @@ uv run python -m evals.scoreboard                                         # rege
   when either file is out of date, which is what stops a hand edit. Neither file is ever edited
   by hand: if a number is wrong, fix the results or the generator and run it again.
 
-The metrics are defined in `metrics.py`, one short function each:
+The first six are defined in `metrics.py`, one short function each; the last four are defined in
+`ragas_metrics.py`, one function each:
 
 | Metric | What it asks |
 |--------|--------------|
