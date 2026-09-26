@@ -9,10 +9,10 @@ right passage was even retrieved, and this is how you look.
 `GET /healthz` says whether the database is reachable and how many chunks of the configured
 edition are in it, so a deployment can tell "up" from "up but empty".
 
-The expensive objects — the connection pool, the embedder, the retriever and the chat model —
-are built once in the lifespan handler and shared by every request. Building an AWS client
-takes long enough that doing it per request would be felt, and the pool exists precisely so
-connections are not opened per request either. Each one is reachable through a dependency
+The expensive objects — the connection pool, the embedder, the re-ranker, the retriever and the
+chat model — are built once in the lifespan handler and shared by every request. Building an AWS
+client takes long enough that doing it per request would be felt, and the pool exists precisely
+so connections are not opened per request either. Each one is reachable through a dependency
 function, which is the seam the tests replace.
 
 Status codes follow the spec: 422 when the request itself is wrong, 502 when a provider
@@ -81,6 +81,8 @@ class SearchHit(BaseModel):
     """One retrieved chunk, with where it stood in each ranking that found it."""
 
     chunk_id: int
+    ordinal: int
+    section: str | None
     page_start: int
     page_end: int
     text: str
@@ -88,6 +90,8 @@ class SearchHit(BaseModel):
     rank: int
     lexical_rank: int | None
     vector_rank: int | None
+    fused_rank: int | None
+    rerank_score: float | None
 
 
 class SearchResponse(BaseModel):
@@ -119,8 +123,8 @@ class HealthResponse(BaseModel):
 async def lifespan(app: FastAPI) -> Iterator[None]:
     """Open the pool and build the models once, and close the pool on the way out.
 
-    Nothing here reaches the network: `ConnectionPool` connects in the background and both
-    providers build their AWS clients on first use. A service whose database is down still
+    Nothing here reaches the network: `ConnectionPool` connects in the background and every
+    provider builds its AWS client on first use. A service whose database is down still
     starts, and says so through `/healthz` rather than by refusing to boot.
     """
     settings = Settings()
@@ -128,7 +132,9 @@ async def lifespan(app: FastAPI) -> Iterator[None]:
         embedder = factory.get_embedder(settings)
         app.state.settings = settings
         app.state.pool = pool
-        app.state.retriever = Retriever(pool, embedder, settings)
+        app.state.retriever = Retriever(
+            pool, embedder, settings, reranker=factory.get_reranker(settings)
+        )
         app.state.chat = factory.get_chat_model(settings)
         logger.info(
             "serving edition %s, chunk set %s, from %s",
@@ -208,6 +214,9 @@ def search(request: SearchRequest, retriever: RetrieverDep) -> SearchResponse:
 
     `lexical_rank` and `vector_rank` say which retriever found each chunk and where it stood
     in that retriever's own list; either is null when that retriever did not return it.
+    `fused_rank` is where fusion put the chunk, before any re-ranking, and is null outside
+    hybrid mode. When a re-ranker is configured, a hybrid search is re-ranked, and
+    `rerank_score` holds the re-ranker's score, which is also `score`; otherwise it is null.
     """
     with provider_failures("search"):
         chunks = retriever.search(request.query, mode=request.mode, top_k=request.top_k)
