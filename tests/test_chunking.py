@@ -506,6 +506,30 @@ def test_a_question_may_run_longer_than_other_headings():
     )
 
 
+def test_a_heading_may_follow_a_web_address_printed_on_its_own():
+    """Page 32 closes a passage on a web address alone on its line, then "Bariatric surgery"."""
+    lines = [
+        "Ambulatory surgical centers",
+        "Except for certain preventive services (for which you pay nothing if your ",
+        "doctor or other health care provider accepts assignment), you pay 20% of the ",
+        "Medicare-approved amount to both the ambulatory surgical center and the ",
+        "doctor who treats you. The Part B deductible applies. You pay all of the facility ",
+        "service fees for procedures Medicare doesn\u2019t cover in ambulatory surgical ",
+        "centers. ",
+        "Cost & coverage: Find out what you might pay for these procedures:",
+        "Medicare.gov/procedure-price-lookup",
+        "Bariatric surgery",
+        "Medicare covers some bariatric surgical procedures, like gastric bypass surgery ",
+        "and laparoscopic banding surgery, when you meet certain conditions related ",
+        "to morbid obesity. For cost information, visit Medicare.gov/coverage/bariatric-",
+        "surgery.",
+    ]
+
+    chunks = section_chunks([page(32, *lines)])
+
+    assert sections_of(chunks) == ["Ambulatory surgical centers", "Bariatric surgery"]
+
+
 def test_a_question_asked_of_every_plan_type_stays_in_the_text():
     """Pages 66-70 ask each plan type the same questions. A heading repeated three or more
     times in one Section belongs to the entry it is in, and the plan type stays the section."""
