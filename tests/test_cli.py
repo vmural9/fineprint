@@ -14,8 +14,11 @@ import psycopg
 import pytest
 
 from fineprint.answer import Citation, DraftAnswer
-from fineprint.cli import main
-from fineprint.ingest import IngestError, IngestSummary, WordStats
+from fineprint.chunking import section_chunks
+from fineprint.cli import ChunkSetNotIngestedError, PageChunk, main
+from fineprint.editions import EDITIONS
+from fineprint.ingest import IngestError, IngestSummary, WordStats, store
+from fineprint.pdf import Page
 from fineprint.retrieval import EditionNotIngestedError, RetrievedChunk
 from tests.fakes import FakeChatModel, FakeEmbedder
 
@@ -479,3 +482,217 @@ def test_serve_defaults_to_localhost_on_port_8000(monkeypatch, no_dot_env, capsy
 
     (_, options) = asked[0]
     assert (options["host"], options["port"]) == ("127.0.0.1", 8000)
+
+
+# --- chunks -------------------------------------------------------------------------------
+
+# The start of two sections of page 23, the second of which runs on to page 24.
+PREMIUM_SECTION = (
+    "How much does Part B coverage cost? The standard Part B premium amount in 2026 is "
+    "$202.90. Most people pay the standard Part B premium amount every month. Medicare uses "
+    "the modified adjusted gross income reported on your IRS tax return from 2 years ago to "
+    "determine if you\u2019ll pay an extra charge, called the Income-Related Monthly Adjustment "
+    "Amount (IRMAA)."
+)
+PAYMENT_SECTION = (
+    "How can I pay my Part B premium? If you get Social Security or Railroad Retirement Board "
+    "(RRB) benefits, your Part B premium will be deducted from your monthly benefit payment."
+)
+
+PAGE_CHUNKS = [
+    PageChunk(
+        ordinal=53,
+        section="Section 1: Signing up for Medicare > How much does Part B coverage cost?",
+        page_start=23,
+        page_end=23,
+        text=PREMIUM_SECTION,
+    ),
+    PageChunk(
+        ordinal=55,
+        section="Section 1: Signing up for Medicare > How can I pay my Part B premium?",
+        page_start=23,
+        page_end=24,
+        text=PAYMENT_SECTION,
+    ),
+]
+
+
+# Pages 23 and 24 as pypdf extracts them, cut short: the second section of page 23 runs on
+# to page 24.
+PAGE_23 = Page(
+    number=23,
+    text="\n".join(
+        [
+            "Section 1: Signing up for Medicare",
+            "23",
+            "How much does Part B coverage cost? ",
+            "The standard Part B premium amount in 2026 is $202.90. Most people pay the ",
+            "standard Part B premium amount every month.",
+            "How can I pay my Part B premium? ",
+            "If you get Social Security or Railroad Retirement Board (RRB) benefits,  your ",
+            "Part B premium will be deducted from your monthly benefit payment. ",
+        ]
+    ),
+)
+PAGE_24 = Page(
+    number=24,
+    text="\n".join(
+        [
+            "Section 1: Signing up for Medicare",
+            "24",
+            "If you\u2019re a federal retiree with an annuity from the Office of Personnel ",
+            "Management and you aren\u2019t entitled to Social Security or Railroad ",
+            "Retirement Board (RRB) benefits, you can ask to have your Part B premiums ",
+            "deducted from your annuity.",
+        ]
+    ),
+)
+
+
+def flattened(text: str) -> str:
+    """`text` with its line breaks and indents undone, to look for a phrase that was wrapped."""
+    return " ".join(text.split())
+
+
+@pytest.fixture
+def offline_chunks(monkeypatch, no_dot_env) -> SimpleNamespace:
+    """Replace the pool and the query behind `chunks` with fakes.
+
+    `stored.rows` is what the query "finds", `stored.error` what it raises instead, and
+    `stored.asked` records the edition, chunk set and page of every query.
+    """
+    monkeypatch.setenv("DATABASE_URL", FAKE_DATABASE_URL)
+
+    @contextmanager
+    def fake_pool(database_url: str) -> Iterator[None]:
+        yield None
+
+    monkeypatch.setattr("fineprint.cli.connection_pool", fake_pool)
+    stored = SimpleNamespace(rows=list(PAGE_CHUNKS), error=None, asked=[])
+
+    def fake_load(pool, edition: int, chunk_set: str, page: int) -> list[PageChunk]:
+        stored.asked.append((edition, chunk_set, page))
+        if stored.error is not None:
+            raise stored.error
+        return list(stored.rows)
+
+    monkeypatch.setattr("fineprint.cli.load_page_chunks", fake_load)
+    return stored
+
+
+def test_chunks_prints_every_chunk_that_covers_the_page(offline_chunks, capsys):
+    exit_code = main(["chunks", "--page", "23", "--chunk-set", "sections"])
+
+    printed = capsys.readouterr().out
+    assert exit_code == 0
+    assert "sections" in printed and "page: 23" in printed
+    assert "53. pages 23 " in printed, "the ordinal and the page"
+    assert "55. pages 23-24 " in printed, "a chunk that runs on to the next page"
+    assert f"{len(PREMIUM_SECTION.split())} words" in printed
+    assert "Section 1: Signing up for Medicare > How can I pay my Part B premium?" in printed
+    assert flattened(PREMIUM_SECTION[:160]) in flattened(printed)
+    assert flattened(PREMIUM_SECTION[:170]) not in flattened(printed), "only 160 characters"
+
+
+def test_chunks_prints_a_dash_for_a_chunk_without_a_section(offline_chunks, capsys):
+    """The fixed-size chunker never fills `section`."""
+    offline_chunks.rows = [PAGE_CHUNKS[0]._replace(section=None)]
+
+    main(["chunks", "--page", "23", "--chunk-set", "fixed-220w"])
+
+    assert "section: -" in capsys.readouterr().out
+
+
+def test_chunks_falls_back_to_the_configured_chunk_set_and_edition(offline_chunks, monkeypatch):
+    monkeypatch.setenv("CHUNK_SET", "sections")
+    monkeypatch.setenv("CORPUS_EDITION", "2025")
+
+    main(["chunks", "--page", "23"])
+
+    assert offline_chunks.asked == [(2025, "sections", 23)]
+
+
+def test_the_chunk_set_flag_wins_over_the_configuration(offline_chunks, monkeypatch):
+    monkeypatch.setenv("CHUNK_SET", "sections")
+
+    main(["chunks", "--page", "11", "--chunk-set", "fixed-220w"])
+
+    assert offline_chunks.asked == [(2026, "fixed-220w", 11)]
+
+
+def test_chunks_says_so_when_no_chunk_covers_the_page(offline_chunks, capsys):
+    """Page 127 is blank, so no chunk covers it."""
+    offline_chunks.rows = []
+
+    exit_code = main(["chunks", "--page", "127", "--chunk-set", "sections"])
+
+    assert exit_code == 0
+    assert "no chunk of sections covers page 127" in capsys.readouterr().out
+
+
+def test_a_chunk_set_that_was_never_ingested_is_reported_without_a_traceback(
+    offline_chunks, capsys
+):
+    offline_chunks.error = ChunkSetNotIngestedError(
+        "the 2026 edition has no sections chunks. Ingest them with: "
+        "fineprint ingest --chunk-set sections"
+    )
+
+    exit_code = main(["chunks", "--page", "11", "--chunk-set", "sections"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "fineprint ingest --chunk-set sections" in captured.err
+    assert "Traceback" not in captured.err
+    assert captured.out == ""
+
+
+def test_chunks_reports_a_database_it_cannot_reach_without_a_traceback(offline_chunks, capsys):
+    offline_chunks.error = psycopg.OperationalError("connection refused")
+
+    exit_code = main(["chunks", "--page", "23"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "cannot query" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_chunks_needs_a_page(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(["chunks"])
+
+    assert excinfo.value.code == 2
+
+
+def test_chunks_refuses_a_chunk_set_no_chunker_makes(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(["chunks", "--page", "23", "--chunk-set", "paragraphs"])
+
+    assert excinfo.value.code == 2
+
+
+@pytest.mark.integration
+def test_chunks_lists_what_ingest_stored_for_a_page(
+    pool, initialized_database: str, monkeypatch, no_dot_env, capsys
+):
+    """The chunks ingest's own `store` wrote come back for every page they cover, and a chunk
+    set that was never stored is reported with the command that stores it."""
+    pages = [PAGE_23, PAGE_24]
+    chunks = section_chunks(pages)
+    vectors = FakeEmbedder().embed_documents([chunk.text for chunk in chunks])
+    with pool.connection() as connection:
+        store(connection, EDITIONS[2026], "sections", pages, chunks, vectors)
+    monkeypatch.setenv("DATABASE_URL", initialized_database)
+
+    on_page_24 = main(["chunks", "--page", "24", "--chunk-set", "sections"])
+    printed = capsys.readouterr().out
+    never_stored = main(["chunks", "--page", "24", "--chunk-set", "fixed-220w"])
+    refused = capsys.readouterr()
+
+    assert on_page_24 == 0
+    assert "1. pages 23-24" in printed
+    assert "section: How can I pay my Part B premium?" in printed, "no contents page, no Section"
+    assert "How much does Part B coverage cost?" not in printed, "that chunk ends on page 23"
+    assert never_stored == 1
+    assert "fineprint ingest --chunk-set fixed-220w" in refused.err

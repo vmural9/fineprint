@@ -1,8 +1,8 @@
 """The `fineprint` command.
 
 One subcommand per thing the service can do: `init-db` and `ingest` prepare the database,
-`search` shows what retrieval finds, `ask` answers a question from it, and `serve` puts the
-same two operations behind HTTP.
+`chunks` shows how a chunk set cut a page, `search` shows what retrieval finds, `ask` answers a
+question from it, and `serve` puts the same two operations behind HTTP.
 
 Each subcommand reads `Settings` itself, so a flag that is left off falls back to the
 configured value and the environment stays the single place configuration lives.
@@ -18,10 +18,11 @@ import sys
 import textwrap
 import time
 from collections.abc import Sequence
+from typing import NamedTuple
 
 import psycopg
 import uvicorn
-from psycopg_pool import PoolTimeout
+from psycopg_pool import ConnectionPool, PoolTimeout
 
 from fineprint.answer import AnswerResponse, answer_question
 from fineprint.chunking import CHUNKERS
@@ -256,6 +257,110 @@ def run_serve(args: argparse.Namespace) -> int:
     return 0
 
 
+# --- chunks -------------------------------------------------------------------------------
+
+# How much of each chunk `chunks` shows.
+CHUNK_PREVIEW_CHARACTERS = 160
+
+# Every chunk of one chunk set that covers a page: its first word is on that page or before
+# it, and its last word on that page or after it.
+PAGE_CHUNKS_SQL = """
+SELECT c.ordinal, c.section, c.page_start, c.page_end, c.text
+FROM chunks AS c
+JOIN documents AS d ON d.id = c.document_id
+WHERE d.edition = %(edition)s AND c.chunk_set = %(chunk_set)s
+  AND c.page_start <= %(page)s AND c.page_end >= %(page)s
+ORDER BY c.ordinal
+"""
+
+# Whether the chunk set is stored at all for the edition.
+CHUNK_SET_STORED_SQL = """
+SELECT EXISTS (
+    SELECT 1
+    FROM chunks AS c
+    JOIN documents AS d ON d.id = c.document_id
+    WHERE d.edition = %(edition)s AND c.chunk_set = %(chunk_set)s
+)
+"""
+
+
+class ChunkSetNotIngestedError(RuntimeError):
+    """The chunk set asked for has no chunks of the configured edition in the database."""
+
+
+class PageChunk(NamedTuple):
+    """One stored chunk, as `fineprint chunks` lists it."""
+
+    ordinal: int
+    section: str | None
+    page_start: int
+    page_end: int
+    text: str
+
+
+def load_page_chunks(
+    pool: ConnectionPool, edition: int, chunk_set: str, page: int
+) -> list[PageChunk]:
+    """The chunks of `chunk_set` that cover `page`, in the order they have in the handbook.
+
+    An empty list means the chunk set is stored but no chunk reaches the page, as with the
+    blank page 127. A chunk set with no chunks at all raises instead, because the fix is to
+    ingest it.
+    """
+    parameters = {"edition": edition, "chunk_set": chunk_set, "page": page}
+    with pool.connection() as connection:
+        rows = connection.execute(PAGE_CHUNKS_SQL, parameters).fetchall()
+        stored = bool(rows) or connection.execute(CHUNK_SET_STORED_SQL, parameters).fetchone()[0]
+    if not stored:
+        raise ChunkSetNotIngestedError(
+            f"the {edition} edition has no {chunk_set} chunks in the database. "
+            f"Ingest them with: fineprint ingest --chunk-set {chunk_set}"
+        )
+    return [PageChunk(*row) for row in rows]
+
+
+def chunk_opening(text: str) -> str:
+    """The first `CHUNK_PREVIEW_CHARACTERS` characters of a chunk, with an ellipsis if cut."""
+    if len(text) <= CHUNK_PREVIEW_CHARACTERS:
+        return text
+    return text[:CHUNK_PREVIEW_CHARACTERS] + "…"
+
+
+def print_page_chunks(chunks: Sequence[PageChunk], chunk_set: str, page: int) -> None:
+    """One block per chunk: its ordinal, pages and size, its section, and how it starts."""
+    if not chunks:
+        print(f"no chunk of {chunk_set} covers page {page}")
+        return
+    width = text_width()
+    for chunk in chunks:
+        pages = format_pages(chunk.page_start, chunk.page_end)
+        print(f"{chunk.ordinal:>4}. pages {pages:<7} {len(chunk.text.split()):>4} words")
+        print(f"      section: {chunk.section or '-'}")
+        for line in textwrap.wrap(chunk_opening(chunk.text), width=width - 6):
+            print(f"      {line}")
+        print()
+
+
+def run_chunks(args: argparse.Namespace) -> int:
+    """List the chunks of one chunk set that cover a page, as the database holds them."""
+    settings = Settings()
+    chunk_set = settings.chunk_set if args.chunk_set is None else args.chunk_set
+
+    try:
+        with connection_pool(settings.database_url) as pool:
+            chunks = load_page_chunks(pool, settings.corpus_edition, chunk_set, args.page)
+    except ChunkSetNotIngestedError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+    except Exception as error:
+        return report_failure(error, settings)
+
+    print(f"chunk set: {chunk_set}    page: {args.page}    edition: {settings.corpus_edition}")
+    print()
+    print_page_chunks(chunks, chunk_set, args.page)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Describe the command and its subcommands."""
     parser = argparse.ArgumentParser(
@@ -364,6 +469,29 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"port to listen on (default: {DEFAULT_PORT})",
     )
     serve_command.set_defaults(run=run_serve)
+
+    chunks_command = subcommands.add_parser(
+        "chunks",
+        help="show the chunks that cover a page of the handbook, without asking a model",
+        description=(
+            "Print every chunk of one chunk set that covers a page of the handbook: its "
+            "ordinal, its section, its pages, its length in words, and how it starts. It only "
+            "reads the database, so it calls no model. Run it once with --chunk-set fixed-220w "
+            "and once with --chunk-set sections to see the same page cut both ways."
+        ),
+    )
+    chunks_command.add_argument(
+        "--page",
+        type=int,
+        required=True,
+        help="the page number, as printed on the page",
+    )
+    chunks_command.add_argument(
+        "--chunk-set",
+        choices=sorted(CHUNKERS),
+        help="which chunk set to show (default: CHUNK_SET)",
+    )
+    chunks_command.set_defaults(run=run_chunks)
 
     return parser
 
