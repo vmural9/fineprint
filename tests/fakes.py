@@ -11,7 +11,8 @@ of the real models:
   for code that asks a model several different things, or asks the same thing twice.
 - `FakeReranker` puts passages in order of how many of the query's words each one contains.
 
-Import them as `from tests.fakes import FakeChatModel, FakeEmbedder`.
+Import them as
+`from tests.fakes import FakeChatModel, FakeEmbedder, FakeReranker, ScriptedChatModel`.
 """
 
 import hashlib

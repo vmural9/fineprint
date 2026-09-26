@@ -12,6 +12,7 @@ import hashlib
 import json
 
 import pytest
+from pydantic import ValidationError
 
 from evals import ragas_metrics
 from evals.golden import load_golden_set
@@ -641,6 +642,28 @@ def test_every_detail_can_be_written_into_a_results_file_as_json():
         assert json.loads(json.dumps(result.detail)) == result.detail
 
 
+@pytest.mark.parametrize(
+    ("reply", "field"),
+    [
+        pytest.param(sentence_verdicts(True, False), "verdicts", id="SentenceVerdicts"),
+        pytest.param(passage_verdicts(True, False), "verdicts", id="PassageVerdicts"),
+        pytest.param(claim_list(PREMIUM_CLAIM, IRMAA_CLAIM), "claims", id="AnswerClaims"),
+        pytest.param(claim_verdicts(True, False), "verdicts", id="ClaimVerdicts"),
+        pytest.param(generated(QUESTION, QUESTION), "questions", id="GeneratedQuestions"),
+    ],
+)
+def test_a_list_the_judge_sends_as_a_json_string_validates_to_the_same_reply(reply, field):
+    sent = reply.model_dump()
+    sent[field] = json.dumps(sent[field])
+
+    assert type(reply).model_validate(sent) == reply
+
+
+def test_a_string_that_is_not_json_is_still_rejected():
+    with pytest.raises(ValidationError):
+        AnswerClaims.model_validate({"claims": "The standard Part B premium in 2026 is $202.90."})
+
+
 SYSTEM_PROMPTS = {
     "context_recall": CONTEXT_RECALL_SYSTEM,
     "context_precision": CONTEXT_PRECISION_SYSTEM,
@@ -683,6 +706,12 @@ def test_the_reply_schemas_are_in_the_fingerprint_as_the_judge_receives_them():
 
     assert json.loads(REPLY_SCHEMAS) == [schema.model_json_schema() for schema in schemas]
     assert REPLY_SCHEMAS in PROMPTS
+
+
+def test_the_fingerprint_is_pinned_so_it_moves_only_when_the_judge_is_shown_something_new():
+    # A deliberate change to a prompt or a reply schema updates this value along with it. A change
+    # the judge never sees, such as how its replies are parsed, must leave it alone.
+    assert PROMPTS_SHA256 == "ac734ecc83cefef514b9e51004e85c30aa9d67f451b166a392266cd79f503e5f"
 
 
 @pytest.mark.parametrize("index", range(len(PROMPTS)))
