@@ -145,7 +145,7 @@ Each question's rank is put in one of four buckets:
 |--------|---------|
 | `1-5` | Already where `fineprint search` would return it today; a re-ranker changes nothing here. |
 | `6-20` | In the pool, past the top 5 — exactly what raising `RERANK_CANDIDATES` and turning on the re-ranker could promote. |
-| `21-40` | Deeper still in the fused pool. |
+| `21+` | Deeper still in the pool, open-ended — the exact rank is in `first_hit_rank`. |
 | `absent` | Not retrieved at all, at any rank the pool reached. No re-ranker can fix this one; the chunking or the retriever has to change instead. |
 
 The command prints one row per question type (`lookup`, `table`, `multi_section`) plus an `all`

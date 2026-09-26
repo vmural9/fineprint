@@ -7,7 +7,7 @@ every answerable golden question, this script calls `Retriever.candidates()` —
 before the top-5 cut and before any re-ranking — and finds the 1-based pool rank of the first
 chunk that covers an expected page (or a page recorded as stating the same fact under it in
 `alt_pages`). The rank is bucketed: `1-5` is already where `search()` would return it; `6-20` and
-`21-40` are inside the pool but past the top 5, exactly what a re-ranker could still promote;
+`21+` are inside the pool but past the top 5, exactly what a re-ranker could still promote;
 `absent` means no chunk in the pool covers the page at all, which no re-ranker can fix.
 
 The pool depends on only two things: the chunk set and the retrieval mode. Re-ranking and the
@@ -61,7 +61,7 @@ MODES = ("hybrid", "vector", "lexical")
 # `unanswerable` questions have no expected page to look for, so they never appear in a row here.
 QUESTION_TYPES = ("lookup", "table", "multi_section")
 
-BUCKETS = ("1-5", "6-20", "21-40", "absent")
+BUCKETS = ("1-5", "6-20", "21+", "absent")
 
 EXIT_OK = 0
 EXIT_FAILED = 1
@@ -120,10 +120,10 @@ def first_hit_rank(item: GoldenItem, candidates: Sequence[RankedPageRange]) -> i
 def bucket_for(rank: int | None) -> str:
     """Which of the four buckets a pool rank falls into.
 
-    `21-40` also catches a rank deeper than 40: with the default `RETRIEVAL_CANDIDATES` (20),
-    hybrid's fused pool never holds more than 40 distinct chunks, so this only matters if that
-    setting is raised. A chunk that was found stays found, however deep, rather than being
-    mislabelled `absent`.
+    `21+` is open-ended on purpose: folding every deep rank into a `21-40` bucket would only be
+    true while `RETRIEVAL_CANDIDATES` stays at its default of 20, and this tool exists to show
+    where a page actually sits. A rank of 90 is `21+` here, never mislabelled `absent` — the
+    exact number is still in `first_hit_rank` for anyone who needs it.
     """
     if rank is None:
         return "absent"
@@ -131,7 +131,7 @@ def bucket_for(rank: int | None) -> str:
         return "1-5"
     if rank <= 20:
         return "6-20"
-    return "21-40"
+    return "21+"
 
 
 def rank_question(item: GoldenItem, candidates: Sequence[RankedPageRange]) -> QuestionRank:

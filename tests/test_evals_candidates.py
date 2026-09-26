@@ -84,8 +84,8 @@ def test_a_hit_at_rank_12_lands_in_bucket_6_to_20():
     assert bucket_for(12) == "6-20"
 
 
-def test_a_hit_at_rank_35_lands_in_bucket_21_to_40():
-    assert bucket_for(35) == "21-40"
+def test_a_hit_at_rank_35_lands_in_bucket_21_plus():
+    assert bucket_for(35) == "21+"
 
 
 def test_no_covering_chunk_in_the_pool_is_absent():
@@ -116,7 +116,7 @@ def test_a_chunk_on_an_alternate_page_counts_as_covering_the_expected_page():
 
 
 def test_a_rank_deeper_than_40_is_still_found_not_mislabelled_absent():
-    assert bucket_for(41) == "21-40"
+    assert bucket_for(41) == "21+"
 
 
 # --- rank_questions: the loop, and skipping unanswerable questions -----------------
@@ -145,7 +145,7 @@ def test_rank_questions_covers_one_case_per_bucket_and_skips_unanswerable():
     assert [(row.id, row.first_hit_rank, row.bucket) for row in rows] == [
         ("q001", 3, "1-5"),
         ("q002", 12, "6-20"),
-        ("q003", 35, "21-40"),
+        ("q003", 35, "21+"),
         ("q004", None, "absent"),
     ]
     # The unanswerable question was never even sent to the retriever.
@@ -189,7 +189,7 @@ def test_render_table_has_one_row_per_question_type_plus_all():
     by_type = {line.split()[0]: line for line in lines[1:]}
 
     assert set(by_type) == {"lookup", "table", "multi_section", "all"}
-    # lookup: one in 1-5, one in 6-20, none in 21-40 or absent.
+    # lookup: one in 1-5, one in 6-20, none in 21+ or absent.
     assert by_type["lookup"].split()[1:] == ["1", "1", "0", "0", "2"]
     # table: one absent.
     assert by_type["table"].split()[1:] == ["0", "0", "0", "1", "1"]
@@ -202,7 +202,7 @@ def test_render_table_has_one_row_per_question_type_plus_all():
 def test_render_table_header_names_all_four_buckets():
     header = render_table([])[0]
 
-    assert header.split()[:4] == ["type", "1-5", "6-20", "21-40"]
+    assert header.split()[:4] == ["type", "1-5", "6-20", "21+"]
     assert "absent" in header
 
 
