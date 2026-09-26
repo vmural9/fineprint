@@ -10,6 +10,7 @@ import pytest
 
 from evals.metrics import Aggregates, ManualPass, QuestionMetrics
 from evals.results import (
+    RESULTS_DIR,
     Corpus,
     GitState,
     GoldenSetInfo,
@@ -19,6 +20,7 @@ from evals.results import (
     Review,
     RunConfig,
     RunResult,
+    Scoring,
     git_state,
     latest_per_config,
     load,
@@ -38,6 +40,13 @@ HYBRID = RunConfig(
     rrf_k=60,
     embedding_model="amazon.titan-embed-text-v2:0",
     llm_model="us.anthropic.claude-opus-5",
+)
+
+# The three files part 1 committed, written before any part 2 field existed.
+PART_1_FILES = (
+    "20260921T011412Z_lexical-only.json",
+    "20260921T011428Z_vector-only.json",
+    "20260921T012044Z_hybrid.json",
 )
 
 
@@ -90,6 +99,12 @@ def test_a_run_id_is_a_utc_timestamp_and_the_configuration_name():
     assert make_run_id("vector-only", when) == "20260921T031500Z_vector-only"
 
 
+def test_a_run_id_allows_a_plus_for_a_rerank_configuration():
+    when = datetime(2026, 9, 21, 3, 15, 0, tzinfo=UTC)
+
+    assert make_run_id("hybrid+rerank", when) == "20260921T031500Z_hybrid+rerank"
+
+
 def test_a_results_file_is_named_after_its_run(tmp_path: Path):
     assert results_path("20260921T031500Z_hybrid", tmp_path).name == "20260921T031500Z_hybrid.json"
 
@@ -101,6 +116,51 @@ def test_a_run_survives_being_written_and_read_back(tmp_path: Path):
     path = save(run(), results_path(run().run_id, tmp_path))
 
     assert load(path) == run()
+
+
+def test_a_run_with_every_new_field_filled_survives_being_written_and_read_back(tmp_path: Path):
+    """Every field part 2 adds — the re-ranker knobs, the retrieved text and ranks, the
+    per-question scoring detail, and the scoring block itself — round-trips unchanged."""
+    filled = replace(
+        run(),
+        config=replace(
+            HYBRID, name="hybrid+rerank", reranker="cohere.rerank-v3-5:0", rerank_candidates=20
+        ),
+        questions=[
+            replace(
+                question(),
+                retrieved=[
+                    RetrievedChunk(
+                        chunk_id=141,
+                        page_start=22,
+                        page_end=23,
+                        rank=1,
+                        score=0.91,
+                        lexical_rank=1,
+                        vector_rank=3,
+                        ordinal=42,
+                        section="Part B costs",
+                        text="The standard Part B premium amount in 2026 is $202.90.",
+                        fused_rank=4,
+                        rerank_score=0.91,
+                    )
+                ],
+                scoring_detail={"sentences": [{"text": "$202.90 a month.", "supported": True}]},
+            )
+        ],
+        scoring=Scoring(
+            judge_model="us.anthropic.claude-sonnet-5",
+            embedding_model="amazon.titan-embed-text-v2:0",
+            prompts_sha256="ab" * 32,
+            scored_at="2026-09-27T00:00:00Z",
+            judge_input_tokens=1200,
+            judge_output_tokens=300,
+        ),
+    )
+
+    reloaded = load(save(filled, results_path(filled.run_id, tmp_path)))
+
+    assert reloaded == filled
 
 
 def test_saving_creates_the_results_directory_when_it_is_missing(tmp_path: Path):
@@ -124,10 +184,14 @@ def test_a_saved_run_is_readable_json_with_the_documented_keys(tmp_path: Path):
         "corpus",
         "golden_set",
         "questions",
+        "scoring",
     }
     assert record["git"] == {"commit": "0123456789abcdef0123456789abcdef01234567", "dirty": False}
     assert record["config"]["llm_model"] == "us.anthropic.claude-opus-5"
+    assert record["config"]["reranker"] is None
+    assert record["scoring"] is None
     assert record["questions"][0]["retrieved"][0]["rank"] == 1
+    assert record["questions"][0]["scoring_detail"] is None
     assert record["questions"][0]["review"] == {
         "verdict": None,
         "note": "",
@@ -167,6 +231,31 @@ def test_a_file_that_is_not_json_at_all_is_refused_by_name(tmp_path: Path):
         load(path)
 
     assert "broken.json" in str(error.value)
+
+
+# --- part 1's committed files still load ------------------------------------------
+
+
+@pytest.mark.parametrize("filename", PART_1_FILES)
+def test_part_1s_committed_results_files_still_load_with_every_new_field_defaulting_to_none(
+    filename: str,
+):
+    """Every field part 2 adds defaults to `None`, so a file written before any of them existed
+    still loads — this is what lets the scoreboard go on reading part 1's three runs unchanged."""
+    result = load(RESULTS_DIR / filename)
+
+    assert result.config.reranker is None
+    assert result.config.rerank_candidates is None
+    assert result.scoring is None
+    assert result.questions  # sanity: the file was not empty
+    for row in result.questions:
+        assert row.scoring_detail is None
+        for chunk in row.retrieved:
+            assert chunk.ordinal is None
+            assert chunk.section is None
+            assert chunk.text is None
+            assert chunk.fused_rank is None
+            assert chunk.rerank_score is None
 
 
 # --- finding the latest run per configuration -------------------------------------
@@ -227,6 +316,10 @@ def test_a_run_recomputes_its_aggregates_from_its_questions():
         cited_page_hit=1.0,
         abstention_accuracy=1.0,
         manual=ManualPass(passes=1, reviewed=2),
+        context_recall=None,
+        context_precision=None,
+        faithfulness=None,
+        answer_relevance=None,
     )
 
 

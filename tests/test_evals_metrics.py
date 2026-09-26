@@ -298,6 +298,10 @@ def test_aggregate_averages_over_the_questions_each_metric_applies_to():
         cited_page_hit=pytest.approx(1 / 3),
         abstention_accuracy=0.75,
         manual=ManualPass(passes=1, reviewed=2),
+        context_recall=None,
+        context_precision=None,
+        faithfulness=None,
+        answer_relevance=None,
     )
 
 
@@ -312,4 +316,61 @@ def test_aggregate_of_nothing_measures_nothing():
         cited_page_hit=None,
         abstention_accuracy=None,
         manual=ManualPass(passes=0, reviewed=0),
+        context_recall=None,
+        context_precision=None,
+        faithfulness=None,
+        answer_relevance=None,
     )
+
+
+# --- the four RAGAS-style metrics: nothing computes them yet, but aggregate() folds them in ---
+
+
+def test_aggregate_means_the_four_ragas_metrics_when_they_are_present():
+    """Nothing in this module computes these yet — `evals/score.py` will. This only proves
+    `aggregate` folds them in with the same None-ignoring mean as every other metric here, once
+    they are filled: one answerable question scores on all four, one unanswerable question (D7)
+    leaves them `None` and is skipped rather than counted as zero."""
+    rows = [
+        Scored(
+            answerable=True,
+            answered=True,
+            metrics=QuestionMetrics(
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                context_recall=1.0,
+                context_precision=0.8,
+                faithfulness=1.0,
+                answer_relevance=0.9,
+            ),
+        ),
+        Scored(
+            answerable=False,
+            answered=True,
+            metrics=QuestionMetrics(None, None, None, None, 0.0),
+        ),
+    ]
+
+    totals = aggregate(rows)
+
+    assert totals.context_recall == 1.0
+    assert totals.context_precision == 0.8
+    assert totals.faithfulness == 1.0
+    assert totals.answer_relevance == 0.9
+
+
+def test_aggregate_leaves_the_four_ragas_metrics_none_when_none_are_present():
+    metrics = QuestionMetrics(1.0, 1.0, 1.0, 1.0, 1.0)
+    rows = [Scored(answerable=True, answered=True, metrics=metrics)]
+
+    totals = aggregate(rows)
+
+    assert (
+        totals.context_recall,
+        totals.context_precision,
+        totals.faithfulness,
+        totals.answer_relevance,
+    ) == (None, None, None, None)

@@ -16,6 +16,13 @@ The spec names the retrieval metrics `page_hit@5` and `page_recall@5`. The `5` i
 configured top-k, which the results file records next to the numbers; part 1 runs every
 configuration at k = 5. The functions here score whatever list of chunks they are handed, so the
 caller is the one that cuts the list to k.
+
+Part 2 adds four more fields to `QuestionMetrics` and `Aggregates`: `context_recall`,
+`context_precision`, `faithfulness` and `answer_relevance`, the four RAGAS-style metrics judged
+by a language model rather than computed from page numbers. This module only carries their
+fields and folds them into a run's aggregates with the same `None`-ignoring `mean` as everything
+else here; `evals/ragas_metrics.py` defines what each one measures, and `evals/score.py` is the
+second pass that actually computes them, once a results file has retrieved text to judge.
 """
 
 from collections.abc import Iterable, Sequence
@@ -64,6 +71,10 @@ class QuestionMetrics:
     reciprocal_rank: float | None = None
     cited_page_hit: float | None = None
     abstention_correct: float | None = None
+    context_recall: float | None = None
+    context_precision: float | None = None
+    faithfulness: float | None = None
+    answer_relevance: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +103,10 @@ class Aggregates:
     cited_page_hit: float | None
     abstention_accuracy: float | None
     manual: ManualPass
+    context_recall: float | None
+    context_precision: float | None
+    faithfulness: float | None
+    answer_relevance: float | None
 
 
 def covers(page_range: PageRange, page: int) -> bool:
@@ -180,7 +195,11 @@ def score_question(
     citations: Sequence[PageRange] | None = None,
     found_in_handbook: bool | None = None,
 ) -> QuestionMetrics:
-    """Score one question. Leave `citations` and `found_in_handbook` out on a retrieval-only run."""
+    """Score one question. Leave `citations` and `found_in_handbook` out on a retrieval-only run.
+
+    This fills only the five part 1 metrics. The four RAGAS metrics are left at their default
+    `None` here; `evals/score.py` fills them in a later pass, once there is a judge to ask.
+    """
     return QuestionMetrics(
         page_hit=page_hit(item, chunks),
         page_recall=page_recall(item, chunks),
@@ -229,4 +248,8 @@ def aggregate(scores: Iterable[QuestionScore]) -> Aggregates:
         cited_page_hit=mean(row.metrics.cited_page_hit for row in rows),
         abstention_accuracy=mean(row.metrics.abstention_correct for row in rows),
         manual=manual_pass(row.verdict for row in rows),
+        context_recall=mean(row.metrics.context_recall for row in rows),
+        context_precision=mean(row.metrics.context_precision for row in rows),
+        faithfulness=mean(row.metrics.faithfulness for row in rows),
+        answer_relevance=mean(row.metrics.answer_relevance for row in rows),
     )
