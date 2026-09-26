@@ -10,11 +10,14 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from evals.configs import CONFIGS as SHARED_CONFIGS
+from evals.configs import settings_for
 from evals.golden import Evidence, GoldenItem
 from evals.results import Corpus
-from evals.run_golden_set import CONFIGS, build_parser, main, run_questions
+from evals.run_golden_set import CONFIGS, build_parser, build_retriever, main, run_questions
 from fineprint.answer import Citation, DraftAnswer, answer_question
-from tests.fakes import FakeChatModel
+from fineprint.config import Settings
+from tests.fakes import FakeChatModel, FakeEmbedder, FakeReranker
 
 
 @dataclass(frozen=True)
@@ -29,6 +32,10 @@ class FakeChunk:
     score: float = 0.03
     lexical_rank: int | None = 1
     vector_rank: int | None = 2
+    ordinal: int | None = 1
+    section: str | None = None
+    fused_rank: int | None = None
+    rerank_score: float | None = None
 
 
 @dataclass(frozen=True)
@@ -121,6 +128,33 @@ def test_the_loop_records_the_retrieved_chunks_and_scores_the_question():
     assert row.metrics.page_hit == 1.0
     assert row.metrics.reciprocal_rank == 1.0
     assert row.error is None
+
+
+def test_the_loop_carries_the_new_retrieval_fields_into_the_results_file():
+    """D5: from part 2 on, a results file stores each retrieved chunk's text, ordinal, section
+    and both ranks, not just where it sits and how it ranked."""
+    item = golden()
+    chunk = FakeChunk(
+        chunk_id=141,
+        page_start=22,
+        page_end=23,
+        rank=1,
+        text="The standard Part B premium amount in 2026 is $202.90.",
+        ordinal=7,
+        section="Part B costs",
+        fused_rank=4,
+        rerank_score=0.91,
+    )
+    retriever = FakeRetriever({item.question: [chunk]})
+
+    (row,) = run_questions([item], retriever, mode="hybrid", top_k=5, report=lambda line: None)
+
+    (retrieved,) = row.retrieved
+    assert retrieved.text == chunk.text
+    assert retrieved.ordinal == 7
+    assert retrieved.section == "Part B costs"
+    assert retrieved.fused_rank == 4
+    assert retrieved.rerank_score == 0.91
 
 
 def test_the_loop_searches_in_the_configured_mode_at_the_configured_k():
@@ -293,6 +327,61 @@ def test_one_progress_line_per_question_naming_the_question_and_its_hit():
     assert "hit 1" in lines[0] and "hit 0" in lines[1]
 
 
+# --- the six configurations --------------------------------------------------------
+
+
+def test_the_runners_configs_are_the_shared_registry():
+    """`run_golden_set` names the one registry in `evals.configs`, not a copy of its own, so
+    a new row there needs no change here."""
+    assert CONFIGS is SHARED_CONFIGS
+
+
+def test_the_configurations_cover_the_six_scoreboard_rows():
+    assert sorted(CONFIGS) == [
+        "hybrid",
+        "hybrid+rerank",
+        "lexical-only",
+        "sections",
+        "sections+rerank",
+        "vector-only",
+    ]
+
+
+@pytest.mark.parametrize("name", sorted(CONFIGS))
+def test_build_retriever_wires_each_configurations_own_settings_and_reranker(name, monkeypatch):
+    """`build_retriever` builds the `Settings` this configuration means and passes whatever
+    `get_reranker` hands back straight into the `Retriever`.
+
+    `get_reranker` is monkeypatched here in `evals.run_golden_set` — not in
+    `fineprint.providers.factory` — because the runner imports it at module level precisely so
+    a test can replace it, the same way the `wired` fixture below replaces this module's other
+    neighbours. `get_embedder` stays a lazy import inside `build_retriever`, so it is replaced at
+    its own source instead.
+    """
+    config = CONFIGS[name]
+    fake_reranker = FakeReranker()
+    seen: list[Settings] = []
+
+    def fake_get_reranker(settings: Settings):
+        seen.append(settings)
+        return fake_reranker if config.reranker else None
+
+    monkeypatch.setattr("fineprint.providers.factory.get_embedder", lambda settings: FakeEmbedder())
+    monkeypatch.setattr("evals.run_golden_set.get_reranker", fake_get_reranker)
+
+    settings = settings_for(config, Settings())
+    retriever = build_retriever(settings, pool=object())
+
+    assert seen == [settings]
+    assert retriever.settings.chunk_set == config.chunk_set
+    assert retriever.settings.reranker_provider == ("bedrock" if config.reranker else "none")
+    if config.reranker:
+        assert retriever.settings.reranker_model == config.reranker
+        assert retriever.reranker is fake_reranker
+    else:
+        assert retriever.reranker is None
+
+
 # --- the command ------------------------------------------------------------------
 
 
@@ -322,10 +411,6 @@ def wired(monkeypatch):
         monkeypatch.setattr("evals.run_golden_set.build_answer_function", build_answer_function)
 
     return wire
-
-
-def test_the_three_part_1_configurations_map_to_the_three_retrieval_modes():
-    assert CONFIGS == {"hybrid": "hybrid", "vector-only": "vector", "lexical-only": "lexical"}
 
 
 def test_the_command_refuses_a_configuration_it_does_not_know(capsys):
@@ -359,6 +444,8 @@ def test_the_command_writes_a_results_file_and_prints_the_summary(wired, tmp_pat
         "rrf_k": 60,
         "embedding_model": "amazon.titan-embed-text-v2:0",
         "llm_model": "us.anthropic.claude-opus-5",
+        "reranker": None,
+        "rerank_candidates": None,
     }
     assert record["corpus"] == {"edition": 2026, "sha256": "d7a341bc3d2d"}
     assert record["golden_set"]["count"] == 2
@@ -369,6 +456,34 @@ def test_the_command_writes_a_results_file_and_prints_the_summary(wired, tmp_pat
     # One question of the two found its expected page.
     assert "page_hit@5" in printed and "50.0%" in printed
     assert written.name in printed
+
+
+def test_a_reranking_configuration_records_its_model_and_candidate_pool(wired, tmp_path):
+    items = [golden("q001")]
+    wired(items, FakeRetriever({items[0].question: ON_PAGE_23}), answer_fn=lambda q, c: answered(q))
+
+    exit_code = main(["--config", "hybrid+rerank", "--results-dir", str(tmp_path)])
+
+    assert exit_code == 0
+    (written,) = list(tmp_path.glob("*.json"))
+    record = json.loads(written.read_text(encoding="utf-8"))
+    assert record["config"]["reranker"] == "cohere.rerank-v3-5:0"
+    assert record["config"]["rerank_candidates"] == 20
+    assert record["config"]["chunk_set"] == "fixed-220w"
+
+
+def test_a_sections_configuration_records_the_sections_chunk_set(wired, tmp_path):
+    items = [golden("q001")]
+    wired(items, FakeRetriever({items[0].question: ON_PAGE_23}))
+
+    exit_code = main(["--config", "sections", "--retrieval-only", "--results-dir", str(tmp_path)])
+
+    assert exit_code == 0
+    (written,) = list(tmp_path.glob("*.json"))
+    record = json.loads(written.read_text(encoding="utf-8"))
+    assert record["config"]["chunk_set"] == "sections"
+    assert record["config"]["reranker"] is None
+    assert record["config"]["rerank_candidates"] is None
 
 
 def test_a_retrieval_only_run_never_builds_the_answer_model(wired, tmp_path):

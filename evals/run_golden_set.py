@@ -1,15 +1,20 @@
 """Run one configuration over the golden set and write a results file.
 
     python -m evals.run_golden_set --config hybrid
+    python -m evals.run_golden_set --config sections+rerank
     python -m evals.run_golden_set --config lexical-only --retrieval-only
 
-Part 1 has three configurations: `hybrid` fuses both retrievers, `vector-only` searches by
-meaning alone, and `lexical-only` searches by words alone. Running the last two with
-`--retrieval-only` is how the scoreboard shows whether fusion earns its place.
+`evals/configs.py` registers six configurations. Part 1 left three: `hybrid` fuses both
+retrievers, `vector-only` searches by meaning alone, and `lexical-only` searches by words alone.
+Part 2 adds `hybrid+rerank`, where Cohere Rerank 3.5 re-orders the fused list before the top-k
+cut, and `sections` / `sections+rerank`, which run hybrid retrieval — and its re-ranked variant —
+over the `sections` chunk set instead of `fixed-220w`. `--config` names one of the six; every
+other setting for the run comes from `settings_for(config, Settings())`.
 
-`--retrieval-only` skips the answer model, which is the expensive call, but a run is neither
-free nor offline: every mode that searches by meaning embeds each question, and that is one
-Bedrock call per question. Only `lexical-only --retrieval-only` calls no model at all.
+`--retrieval-only` skips the answer model, which is the expensive call, but a run is neither free
+nor offline: every mode that searches by meaning embeds each question, and a configured
+re-ranker is one more Bedrock call per question on top of that. Only `lexical-only
+--retrieval-only` calls no model at all.
 
 A failure on one question is recorded on that question and the run carries on, so one bad
 question cannot cost a whole run. The metrics of a failed question are left empty rather than
@@ -28,6 +33,7 @@ import psycopg
 from psycopg_pool import PoolTimeout
 
 from evals import metrics
+from evals.configs import CONFIGS, EvalConfig, settings_for
 from evals.golden import DEFAULT_GOLDEN_SET, GoldenItem, GoldenSetError, load_golden_set
 from evals.results import (
     RESULTS_DIR,
@@ -46,9 +52,7 @@ from evals.results import (
 )
 from fineprint.config import Settings
 from fineprint.db import connection_pool, describe_database
-
-# The configurations of part 1, and the retrieval mode each one runs in.
-CONFIGS = {"hybrid": "hybrid", "vector-only": "vector", "lexical-only": "lexical"}
+from fineprint.providers.factory import get_reranker
 
 EXIT_OK = 0
 EXIT_FAILED = 1
@@ -144,7 +148,9 @@ def _run_one(
 
 
 def _retrieved(chunk: Any) -> RetrievedChunk:
-    """Keep the parts of a retrieved chunk a results file stores: where it is and how it ranked."""
+    """Keep the parts of a retrieved chunk a results file stores: its text, where it is, and how
+    it ranked (decision D5 — from part 2 on, the text is stored too, since the scoring pass
+    reads contexts only from this file)."""
     return RetrievedChunk(
         chunk_id=chunk.chunk_id,
         page_start=chunk.page_start,
@@ -153,6 +159,11 @@ def _retrieved(chunk: Any) -> RetrievedChunk:
         score=getattr(chunk, "score", None),
         lexical_rank=getattr(chunk, "lexical_rank", None),
         vector_rank=getattr(chunk, "vector_rank", None),
+        ordinal=getattr(chunk, "ordinal", None),
+        section=getattr(chunk, "section", None),
+        text=getattr(chunk, "text", None),
+        fused_rank=getattr(chunk, "fused_rank", None),
+        rerank_score=getattr(chunk, "rerank_score", None),
     )
 
 
@@ -227,16 +238,18 @@ def corpus_from_database(pool: Any, edition: int) -> Corpus:
 
 
 def build_retriever(settings: Settings, pool: Any) -> Retriever:
-    """The real retriever, with the real embedder behind it.
+    """The real retriever, with the real embedder — and a re-ranker, when this configuration
+    turned one on — behind it.
 
-    `fineprint.retrieval` and `fineprint.providers.factory` are imported here rather than at the
-    top of the module so that the metrics, the results file and this loop can be imported — and
-    tested — without them.
+    `fineprint.retrieval` is imported here rather than at the top of the module so that the
+    metrics, the results file and this loop can be imported — and tested — without it.
+    `get_reranker` is imported at the top instead, precisely so a test can replace it, the same
+    way the other module-level imports below are replaced.
     """
     from fineprint.providers.factory import get_embedder
     from fineprint.retrieval import Retriever as RealRetriever
 
-    return RealRetriever(pool, get_embedder(settings), settings)
+    return RealRetriever(pool, get_embedder(settings), settings, get_reranker(settings))
 
 
 def build_answer_function(settings: Settings, retriever: Retriever) -> AnswerFunction:
@@ -267,7 +280,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--config",
         required=True,
         choices=sorted(CONFIGS),
-        help="which configuration to run: hybrid fuses both retrievers, the others use one each",
+        help="which configuration to run; see evals/configs.py and evals/README.md for what "
+        "each one is",
     )
     parser.add_argument(
         "--retrieval-only",
@@ -286,8 +300,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the golden set once and write `evals/results/<run_id>.json`."""
     args = build_parser().parse_args(argv)
-    settings = Settings()
-    mode = CONFIGS[args.config]
+    eval_config: EvalConfig = CONFIGS[args.config]
+    settings = settings_for(eval_config, Settings())
+    mode = eval_config.mode
 
     try:
         items = load_golden_set(DEFAULT_GOLDEN_SET)
@@ -295,9 +310,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"ERROR: {DEFAULT_GOLDEN_SET} failed validation:\n{error}", file=sys.stderr)
         return EXIT_FAILED
 
+    reranker_note = f", reranker {eval_config.reranker}" if eval_config.reranker else ""
     print(
         f"{args.config}: {len(items)} questions, mode {mode}, k {settings.retrieval_top_k}, "
-        f"chunk set {settings.chunk_set}, database {describe_database(settings.database_url)}"
+        f"chunk set {settings.chunk_set}{reranker_note}, "
+        f"database {describe_database(settings.database_url)}"
     )
 
     try:
@@ -340,6 +357,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             rrf_k=settings.rrf_k,
             embedding_model=settings.embedding_model,
             llm_model=None if args.retrieval_only else settings.llm_model,
+            reranker=eval_config.reranker,
+            rerank_candidates=settings.rerank_candidates if eval_config.reranker else None,
         ),
         corpus=corpus,
         golden_set=GoldenSetInfo(sha256=sha256_of(DEFAULT_GOLDEN_SET), count=len(items)),
