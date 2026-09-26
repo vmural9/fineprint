@@ -29,7 +29,7 @@ from fineprint.config import Settings
 from fineprint.db import connection_pool, describe_database, init_db
 from fineprint.editions import EDITIONS
 from fineprint.ingest import IngestError, ingest
-from fineprint.providers.factory import get_chat_model, get_embedder
+from fineprint.providers.factory import get_chat_model, get_embedder, get_reranker
 from fineprint.retrieval import (
     SEARCH_MODES,
     EditionNotIngestedError,
@@ -115,17 +115,25 @@ def preview(text: str) -> str:
 
 
 def print_hits(chunks: Sequence[RetrievedChunk]) -> None:
-    """One block per retrieved chunk: where it ranked, where it is, and how it starts."""
+    """One block per retrieved chunk: where it ranked, where it is, and how it starts.
+
+    A re-ranked chunk also shows its fused rank, where it stood before the re-ranker read it,
+    and the re-ranker's score in place of the fused one.
+    """
     if not chunks:
         print("no chunks matched this question")
         return
     for chunk in chunks:
         pages = format_pages(chunk.page_start, chunk.page_end)
+        if chunk.rerank_score is None:
+            scores = f"score {chunk.score:.4f}"
+        else:
+            scores = f"fused {format_rank(chunk.fused_rank):<3} rerank {chunk.rerank_score:.4f}"
         print(
             f"{chunk.rank:>3}. pages {pages:<6} "
             f"lexical {format_rank(chunk.lexical_rank):<3} "
             f"vector {format_rank(chunk.vector_rank):<3} "
-            f"score {chunk.score:.4f}  chunk {chunk.chunk_id}"
+            f"{scores}  chunk {chunk.chunk_id}"
         )
         print(f"     {preview(chunk.text)}")
         print()
@@ -168,8 +176,8 @@ def print_answer(answered: AnswerResponse) -> None:
 
 
 def open_retriever(settings: Settings, pool) -> Retriever:
-    """A retriever on this pool, with the configured embedder behind it."""
-    return Retriever(pool, get_embedder(settings), settings)
+    """A retriever on this pool, with the configured embedder and re-ranker behind it."""
+    return Retriever(pool, get_embedder(settings), settings, reranker=get_reranker(settings))
 
 
 def report_failure(error: Exception, settings: Settings) -> int:
@@ -299,7 +307,9 @@ def build_parser() -> argparse.ArgumentParser:
             "Search the ingested handbook and print the chunks that come back: their rank, "
             "their pages, where each one stood in the lexical and the vector list, and how "
             "each one starts. Searching by meaning embeds the question, which calls AWS "
-            "Bedrock; --mode lexical calls no model at all."
+            "Bedrock; --mode lexical calls no model at all. With RERANKER_PROVIDER set, a "
+            "hybrid search also has a re-ranker put the candidates in a new order, one more "
+            "Bedrock call, and prints each chunk's fused rank and re-rank score."
         ),
     )
     search_command.add_argument("question", help="what to search for, in quotes")
@@ -324,7 +334,8 @@ def build_parser() -> argparse.ArgumentParser:
             "Retrieve the passages a question is about, ask Claude to answer from them "
             "alone, then check every citation against what was retrieved. Page numbers come "
             "from the database, never from the model. This calls AWS Bedrock twice: once to "
-            "embed the question and once to answer it."
+            "embed the question and once to answer it, and once more to re-rank the passages "
+            "when RERANKER_PROVIDER is set."
         ),
     )
     ask_command.add_argument("question", help="the question, in quotes")
@@ -339,7 +350,7 @@ def build_parser() -> argparse.ArgumentParser:
         "serve",
         help="run the HTTP API",
         description=(
-            "Serve /search, /ask and /healthz with uvicorn. The connection pool and both "
+            "Serve /search, /ask and /healthz with uvicorn. The connection pool and the "
             "models are built once at startup and shared by every request."
         ),
     )
