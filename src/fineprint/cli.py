@@ -307,7 +307,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Search the ingested handbook and print the chunks that come back: their rank, "
             "their pages, where each one stood in the lexical and the vector list, and how "
             "each one starts. Searching by meaning embeds the question, which calls AWS "
-            "Bedrock; --mode lexical calls no model at all. With RERANKER_PROVIDER set, a "
+            "Bedrock; --mode lexical calls no model at all. With RERANKER_PROVIDER=bedrock, a "
             "hybrid search also has a re-ranker put the candidates in a new order, one more "
             "Bedrock call, and prints each chunk's fused rank and re-rank score."
         ),
@@ -333,9 +333,9 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Retrieve the passages a question is about, ask Claude to answer from them "
             "alone, then check every citation against what was retrieved. Page numbers come "
-            "from the database, never from the model. This calls AWS Bedrock twice: once to "
-            "embed the question and once to answer it, and once more to re-rank the passages "
-            "when RERANKER_PROVIDER is set."
+            "from the database, never from the model. This calls AWS Bedrock twice, once to "
+            "embed the question and once to answer it, or three times with "
+            "RERANKER_PROVIDER=bedrock, which re-ranks the passages in between."
         ),
     )
     ask_command.add_argument("question", help="the question, in quotes")
