@@ -24,12 +24,13 @@ matches. Everything else — a changed digit, a straightened apostrophe, a dropp
 left to fail, because those are exactly the differences worth seeing.
 """
 
+from collections.abc import Sequence
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
 from fineprint.providers.base import ChatModel
-from fineprint.retrieval import RetrievedChunk, Retriever
+from fineprint.retrieval import RetrievedChunk, Retriever, SearchMode
 
 # What the model is told before it sees the question. Every rule here exists because the
 # alternative is an answer that looks right and is not: a remembered premium from a previous
@@ -201,15 +202,28 @@ def check_citations(
 
 
 def answer_question(
-    question: str, retriever: Retriever, chat: ChatModel, top_k: int | None = None
+    question: str,
+    retriever: Retriever,
+    chat: ChatModel,
+    top_k: int | None = None,
+    *,
+    mode: SearchMode = "hybrid",
+    chunks: Sequence[RetrievedChunk] | None = None,
 ) -> AnswerResponse:
     """Search the handbook for `question`, ask the model, and check what it says.
 
     The model is asked even when the search found nothing: it is the model's job to say the
     handbook does not answer this and where else to look, and a service-written abstention
     would be a sentence nobody wrote for this question.
+
+    Pass `chunks` — typically a retrieval the caller already ran — to answer from exactly those
+    passages instead: no search happens, `mode` and `top_k` go unused, and `retrieved_chunk_ids`
+    reports the given chunks. This is what lets the eval runner retrieve once per question and
+    have the answer and the retrieval metrics describe the same evidence.
     """
-    chunks = list(retriever.search(question, top_k=top_k))
+    if chunks is None:
+        chunks = retriever.search(question, mode=mode, top_k=top_k)
+    chunks = list(chunks)
     result = chat.complete_structured(
         system=SYSTEM_PROMPT,
         user=build_user_prompt(question, chunks),
