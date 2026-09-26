@@ -12,9 +12,15 @@ committed results files still key to the same rows (decision D6).
 """
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from fineprint.config import Settings
-from fineprint.retrieval import SearchMode
+
+if TYPE_CHECKING:
+    # Only for the type checker: `evals.run_golden_set` and `evals.candidates` both import this
+    # module at their own top level, and each stays free of `fineprint.retrieval` — and everything
+    # that pulls in — until a real retriever is actually built, so this cannot be a real import.
+    from fineprint.retrieval import SearchMode
 
 # Verified live 2026-09-26 (decision D3): the Bedrock Rerank API model every re-ranking
 # configuration below uses. It is also `Settings.reranker_model`'s own default, so a plain
@@ -32,7 +38,7 @@ class EvalConfig:
 
     name: str
     chunk_set: str
-    mode: SearchMode
+    mode: "SearchMode"
     reranker: str | None  # a Bedrock re-ranker model id, or None for no re-ranking step
 
 
