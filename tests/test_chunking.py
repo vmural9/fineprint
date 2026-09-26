@@ -487,6 +487,25 @@ def test_a_heading_may_open_with_a_quotation_mark():
     assert all("Preventive service" not in chunk.text for chunk in chunks)
 
 
+def test_a_question_may_run_longer_than_other_headings():
+    """Page 83's question is 67 characters, past the 65 of other headings but within the 75 a
+    question may run to."""
+    lines = [
+        "Note: This payment option may not be the best choice for you if you get or ",
+        "are eligible for Extra Help from Medicare, including if you get coverage from a ",
+        "Medicare Savings Program.",
+        "What\u2019s the Medicare drug coverage (Part D) late enrollment penalty? ",
+        "The late enrollment penalty is an amount that\u2019s permanently added to your ",
+        "Medicare drug coverage (Part D) premium.",
+    ]
+
+    chunks = section_chunks([page(83, *lines)])
+
+    assert chunks[-1].section == (
+        "What\u2019s the Medicare drug coverage (Part D) late enrollment penalty?"
+    )
+
+
 def test_a_question_asked_of_every_plan_type_stays_in_the_text():
     """Pages 66-70 ask each plan type the same questions. A heading repeated three or more
     times in one Section belongs to the entry it is in, and the plan type stays the section."""
