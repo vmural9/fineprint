@@ -38,9 +38,11 @@ every section up to the next one.
 
 Headings: a line is a heading when
 
-- it is at most 65 characters long, or 55 straight under another heading, where a short first
-  line of a paragraph would otherwise pass for one; it starts with a capital letter (after an
-  opening quotation mark, if it has one) and has a lowercase letter in it;
+- it is at most 65 characters long, or 75 if it is a question like page 83's "What’s the
+  Medicare drug coverage (Part D) late enrollment penalty?", and at most 55 straight under
+  another heading, where a short first line of a paragraph would otherwise pass for one; it
+  starts with a capital letter (after an opening quotation mark, if it has one) and has a
+  lowercase letter in it;
 - it does not end the way a sentence or a fragment does, in a full stop (inside closing
   quotation marks too), comma, colon, semicolon, exclamation mark, ampersand, slash, dash or
   digit, and it holds one phrase: no full stop, exclamation mark or colon inside it starts
@@ -199,6 +201,9 @@ SECTION_TITLE = re.compile(r"^Section \d+: ")
 # The most lines a title or a heading is printed over.
 MAX_HEADING_LINES = 3
 MAX_HEADING_CHARACTERS = 65
+# A question may run longer: "What’s the Medicare drug coverage (Part D) late enrollment
+# penalty?" on page 83 is 67 characters.
+MAX_QUESTION_CHARACTERS = 75
 # Straight under another heading, where every paragraph starts, a heading is shorter still.
 MAX_SUBHEADING_CHARACTERS = 55
 NOT_A_HEADING_ENDING = re.compile(r"[.,;:!&/\-–—\d]$")
@@ -343,10 +348,15 @@ def find_titles(lines: list[Line], titles: dict[str, int]) -> dict[int, int]:
     return found
 
 
+def heading_room(text: str) -> int:
+    """How many characters a line of a heading may take: a question may take more."""
+    return MAX_QUESTION_CHARACTERS if text.endswith("?") else MAX_HEADING_CHARACTERS
+
+
 def looks_like_heading(text: str) -> bool:
     """Whether a line has the shape of a heading, or of a heading's first line."""
     return (
-        len(text) <= MAX_HEADING_CHARACTERS
+        len(text) <= heading_room(text)
         and text.lstrip(OPENING_QUOTES)[:1].isupper()
         and any(character.islower() for character in text)
         and NOT_A_HEADING_ENDING.search(text.rstrip(CLOSING_QUOTES)) is None
@@ -382,7 +392,7 @@ def runs_on(lines: list[Line], start: int, end: int) -> bool:
     if end >= len(lines) or lines[end].page != lines[start].page:
         return False
     heading, following = joined(lines[start:end]), lines[end].text
-    if len(following) > MAX_HEADING_CHARACTERS:
+    if len(following) > heading_room(following):
         return False
     if NOT_A_HEADING_ENDING.search(following.rstrip(CLOSING_QUOTES)):
         return False
