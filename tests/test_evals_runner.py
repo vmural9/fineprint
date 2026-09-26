@@ -13,6 +13,8 @@ import pytest
 from evals.golden import Evidence, GoldenItem
 from evals.results import Corpus
 from evals.run_golden_set import CONFIGS, build_parser, main, run_questions
+from fineprint.answer import Citation, DraftAnswer, answer_question
+from tests.fakes import FakeChatModel
 
 
 @dataclass(frozen=True)
@@ -153,7 +155,7 @@ def test_an_answer_is_stored_whole_and_scored_on_its_citations():
     (row,) = run_questions(
         [item],
         FakeRetriever({item.question: ON_PAGE_23}),
-        lambda question: answered(question),
+        lambda question, chunks: answered(question),
         mode="hybrid",
         top_k=5,
         report=lambda line: None,
@@ -171,7 +173,7 @@ def test_an_answer_that_cites_the_wrong_page_scores_zero_on_cited_page_hit():
     (row,) = run_questions(
         [item],
         FakeRetriever({item.question: ON_PAGE_23}),
-        lambda question: answered(question, pages=90),
+        lambda question, chunks: answered(question, pages=90),
         mode="hybrid",
         top_k=5,
         report=lambda line: None,
@@ -191,7 +193,7 @@ def test_an_unanswerable_question_is_scored_on_its_abstention_alone():
     (row,) = run_questions(
         [item],
         FakeRetriever({item.question: ELSEWHERE}),
-        lambda question: answered(question, found=False),
+        lambda question, chunks: answered(question, found=False),
         mode="hybrid",
         top_k=5,
         report=lambda line: None,
@@ -226,7 +228,7 @@ def test_a_question_whose_retrieval_fails_is_recorded_and_the_run_carries_on():
 def test_a_question_whose_answer_fails_keeps_its_retrieval_metrics():
     item = golden()
 
-    def explode(question: str) -> FakeAnswer:
+    def explode(question: str, chunks) -> FakeAnswer:
         raise RuntimeError("Bedrock said no")
 
     (row,) = run_questions(
@@ -241,6 +243,34 @@ def test_a_question_whose_answer_fails_keeps_its_retrieval_metrics():
     assert row.metrics.page_hit == 1.0
     assert row.answer is None
     assert "Bedrock said no" in row.error
+
+
+# --- retrieve once, and the answer describes what was retrieved -------------------
+
+
+def test_the_loop_retrieves_once_and_the_answer_describes_the_same_chunks():
+    """The bug this fixes: `answer_question` used to search again on its own, so the answer's
+    evidence and the retrieval metrics could silently describe different chunks."""
+    item = golden()
+    retriever = FakeRetriever({item.question: ON_PAGE_23})
+    chat = FakeChatModel(
+        DraftAnswer(
+            answer="The standard Part B premium in 2026 is $202.90 a month.",
+            found_in_handbook=True,
+            citations=[Citation(chunk_id=141, quote="The standard Part B premium amount in 2026")],
+            confidence="high",
+        )
+    )
+
+    def answer_fn(question: str, chunks):
+        return answer_question(question, retriever, chat, chunks=chunks)
+
+    (row,) = run_questions(
+        [item], retriever, answer_fn, mode="hybrid", top_k=5, report=lambda line: None
+    )
+
+    assert retriever.calls == [(item.question, "hybrid", 5)], "retrieval happens exactly once"
+    assert row.answer["retrieved_chunk_ids"] == [chunk.chunk_id for chunk in row.retrieved]
 
 
 # --- what the operator sees -------------------------------------------------------
@@ -311,7 +341,7 @@ def test_the_command_writes_a_results_file_and_prints_the_summary(wired, tmp_pat
     wired(
         items,
         FakeRetriever({items[0].question: ON_PAGE_23, items[1].question: ELSEWHERE}),
-        answer_fn=answered,
+        answer_fn=lambda question, chunks: answered(question),
     )
 
     exit_code = main(["--config", "hybrid", "--results-dir", str(tmp_path)])
@@ -356,6 +386,22 @@ def test_a_retrieval_only_run_never_builds_the_answer_model(wired, tmp_path):
     assert record["config"]["llm_model"] is None
     assert record["questions"][0]["answer"] is None
     assert retriever.calls == [(items[0].question, "lexical", 5)]
+
+
+def test_the_command_exits_1_when_a_question_failed(wired, tmp_path):
+    items = [golden("q001"), golden("q002", question="What does Part D cover?")]
+    retriever = FakeRetriever({items[0].question: ON_PAGE_23, items[1].question: ON_PAGE_23})
+
+    def explode(question: str, chunks) -> FakeAnswer:
+        if question == items[0].question:
+            raise RuntimeError("Bedrock said no")
+        return answered(question)
+
+    wired(items, retriever, answer_fn=explode)
+
+    exit_code = main(["--config", "hybrid", "--results-dir", str(tmp_path)])
+
+    assert exit_code == 1
 
 
 def test_the_results_directory_is_created_when_it_is_missing(wired, tmp_path):
