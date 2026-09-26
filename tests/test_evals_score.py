@@ -167,8 +167,10 @@ def recall(item, *supported: bool) -> SentenceVerdicts:
     assert len(supported) == len(split_sentences(item.expected_answer)), "one per sentence"
     return SentenceVerdicts(
         verdicts=[
-            SentenceVerdict(reason="passage 1" if ok else "in no passage", supported=ok)
-            for ok in supported
+            SentenceVerdict(
+                index=index, reason="passage 1" if ok else "in no passage", supported=ok
+            )
+            for index, ok in enumerate(supported, start=1)
         ]
     )
 
@@ -177,8 +179,12 @@ def precision(*useful: bool) -> PassageVerdicts:
     """The precision judge's reply: one verdict per passage, in rank order."""
     return PassageVerdicts(
         verdicts=[
-            PassageVerdict(reason="gives the amount" if ok else "gives nothing used", useful=ok)
-            for ok in useful
+            PassageVerdict(
+                index=index,
+                reason="gives the amount" if ok else "gives nothing used",
+                useful=ok,
+            )
+            for index, ok in enumerate(useful, start=1)
         ]
     )
 
@@ -187,8 +193,10 @@ def checked(*supported: bool) -> ClaimVerdicts:
     """The faithfulness judge's second reply: one verdict per claim."""
     return ClaimVerdicts(
         verdicts=[
-            ClaimVerdict(reason="passage 1" if ok else "no passage says so", supported=ok)
-            for ok in supported
+            ClaimVerdict(
+                index=index, reason="passage 1" if ok else "no passage says so", supported=ok
+            )
+            for index, ok in enumerate(supported, start=1)
         ]
     )
 
@@ -524,7 +532,9 @@ def test_a_judge_failure_is_recorded_on_its_question_and_the_pass_goes_on(wired,
 
 def test_a_judge_that_miscounts_twice_fails_only_that_question(wired, tmp_path):
     path = three_questions(tmp_path)
-    one_verdict = SentenceVerdicts(verdicts=[SentenceVerdict(reason="passage 1", supported=True)])
+    one_verdict = SentenceVerdicts(
+        verdicts=[SentenceVerdict(index=1, reason="passage 1", supported=True)]
+    )
     script = {
         SentenceVerdicts: [one_verdict, one_verdict, recall(Q002, True, False, False, True)],
         PassageVerdicts: [precision(False, True)],
