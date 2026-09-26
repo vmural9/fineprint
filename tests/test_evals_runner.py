@@ -5,6 +5,8 @@ test takes both as arguments precisely so that these tests can hand it stand-ins
 """
 
 import json
+import subprocess
+import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 
@@ -347,6 +349,23 @@ def test_the_configurations_cover_the_six_scoreboard_rows():
     ]
 
 
+def test_importing_the_runner_does_not_load_the_retriever_or_a_provider_sdk():
+    # evals.candidates imports build_retriever from this module at its own top level, so this
+    # module — and evals.configs, which it also imports at its top level — staying free of
+    # fineprint.retrieval (and everything that pulls in) is what keeps describing --config from
+    # requiring Postgres, boto3 or anthropic to even be installed.
+    program = (
+        "import sys; import evals.run_golden_set; "
+        "print('fineprint.retrieval' in sys.modules, 'boto3' in sys.modules, "
+        "'anthropic' in sys.modules)"
+    )
+    finished = subprocess.run(
+        [sys.executable, "-c", program], capture_output=True, text=True, check=True
+    )
+
+    assert finished.stdout.strip() == "False False False"
+
+
 @pytest.mark.parametrize("name", sorted(CONFIGS))
 def test_build_retriever_wires_each_configurations_own_settings_and_reranker(name, monkeypatch):
     """`build_retriever` builds the `Settings` this configuration means and passes whatever
@@ -387,9 +406,16 @@ def test_build_retriever_wires_each_configurations_own_settings_and_reranker(nam
 
 @pytest.fixture
 def wired(monkeypatch):
-    """Replace the database, the embedder and the answer model so `main` can run offline."""
+    """Replace the database, the embedder and the answer model so `main` can run offline.
+
+    `wire(...)` returns the list `build_retriever` is called into: `main` calls it exactly once,
+    with the `Settings` it built for this run, so a test can check what that run actually wired
+    up (its chunk set, its re-ranker) without a real database or a real retriever.
+    """
 
     def wire(items, retriever, answer_fn=None):
+        seen_settings: list[Settings] = []
+
         @contextmanager
         def fake_pool(database_url: str):
             yield object()
@@ -399,16 +425,20 @@ def wired(monkeypatch):
                 raise AssertionError("a --retrieval-only run must not build the answer model")
             return answer_fn
 
+        def fake_build_retriever(settings, pool):
+            seen_settings.append(settings)
+            return retriever
+
         monkeypatch.setattr("evals.run_golden_set.load_golden_set", lambda path: items)
         monkeypatch.setattr("evals.run_golden_set.connection_pool", fake_pool)
         monkeypatch.setattr(
             "evals.run_golden_set.corpus_from_database",
             lambda pool, edition: Corpus(edition=edition, sha256="d7a341bc3d2d"),
         )
-        monkeypatch.setattr(
-            "evals.run_golden_set.build_retriever", lambda settings, pool: retriever
-        )
+        monkeypatch.setattr("evals.run_golden_set.build_retriever", fake_build_retriever)
         monkeypatch.setattr("evals.run_golden_set.build_answer_function", build_answer_function)
+
+        return seen_settings
 
     return wire
 
@@ -419,6 +449,32 @@ def test_the_command_refuses_a_configuration_it_does_not_know(capsys):
 
     assert exit_info.value.code == 2
     assert "hybrid" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("name", sorted(CONFIGS))
+def test_main_wires_each_configurations_settings_and_searches_in_its_mode(name, wired, tmp_path):
+    """For every configuration, `main` builds the retriever with the `Settings` that
+    configuration means, and searches in the mode it names.
+
+    This drives `main` end to end through the `wired` fixture, which is what actually exercises
+    `--config`, `CONFIGS[name]` and `settings_for` together; `build_retriever` itself is replaced,
+    so this does not also cover wiring `get_reranker` into a real `Retriever` — that is the unit
+    test above.
+    """
+    config = CONFIGS[name]
+    items = [golden("q001")]
+    retriever = FakeRetriever({items[0].question: ON_PAGE_23})
+    seen_settings = wired(items, retriever, answer_fn=lambda question, chunks: answered(question))
+
+    exit_code = main(["--config", name, "--results-dir", str(tmp_path)])
+
+    assert exit_code == 0
+    (settings,) = seen_settings
+    assert settings.chunk_set == config.chunk_set
+    assert settings.reranker_provider == ("bedrock" if config.reranker else "none")
+    if config.reranker:
+        assert settings.reranker_model == config.reranker
+    assert retriever.calls == [(items[0].question, config.mode, settings.retrieval_top_k)]
 
 
 def test_the_command_writes_a_results_file_and_prints_the_summary(wired, tmp_path, capsys):
