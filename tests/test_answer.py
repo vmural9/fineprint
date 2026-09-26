@@ -112,11 +112,12 @@ def ask(
     chunks: list[RetrievedChunk] | None = None,
     question: str = "How much is the Part B premium in 2026?",
     top_k: int | None = None,
+    mode: str = "hybrid",
 ) -> tuple[AnswerResponse, FakeChatModel, FakeRetriever]:
     """Run `answer_question` with a canned draft, and hand back everything worth asserting on."""
     retriever = FakeRetriever(chunks if chunks is not None else [PREMIUM, IRMAA, HEARING])
     chat = FakeChatModel(response)
-    answered = answer_question(question, retriever, chat, top_k=top_k)
+    answered = answer_question(question, retriever, chat, top_k=top_k, mode=mode)
     return answered, chat, retriever
 
 
@@ -181,6 +182,35 @@ def test_top_k_is_passed_through_to_the_retriever():
     _, _, retriever = ask(draft(), top_k=3)
 
     assert retriever.calls == [("How much is the Part B premium in 2026?", "hybrid", 3)]
+
+
+def test_mode_is_forwarded_to_the_retriever_when_no_chunks_are_given():
+    _, _, retriever = ask(draft(), mode="lexical")
+
+    assert retriever.calls == [("How much is the Part B premium in 2026?", "lexical", None)]
+
+
+def test_given_chunks_skip_retrieval_and_mode_is_ignored():
+    # The retriever is primed with a different chunk than the one passed in through `chunks`.
+    # If `answer_question` retrieved anyway, the answer would be built from IRMAA, not PREMIUM.
+    retriever = FakeRetriever([IRMAA])
+    chat = FakeChatModel(draft())
+
+    answered = answer_question(
+        "How much is the Part B premium in 2026?",
+        retriever,
+        chat,
+        mode="lexical",
+        chunks=[PREMIUM],
+    )
+
+    assert retriever.calls == [], "chunks were given, so the retriever must not be called"
+    assert answered.retrieved_chunk_ids == [61]
+    user = chat.calls[0].user
+    assert 'chunk id="61"' in user, "the answer is built from the given chunk"
+    assert 'chunk id="62"' not in user, "not from what the retriever would have returned"
+    assert answered.citations[0].chunk_id == 61
+    assert answered.citations[0].quote_verified is True
 
 
 def test_the_prompt_is_built_from_the_chunks_it_is_given():
