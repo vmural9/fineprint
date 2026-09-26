@@ -1,4 +1,4 @@
-"""The two tests that really call Bedrock.
+"""The tests that really call Bedrock.
 
 Everything else in the suite runs offline. These carry the `live` marker, so a plain
 `uv run pytest` never reaches AWS; run them deliberately with
@@ -17,7 +17,7 @@ import pytest
 from pydantic import BaseModel
 
 from fineprint.config import Settings
-from fineprint.providers.factory import get_chat_model, get_embedder
+from fineprint.providers.factory import get_chat_model, get_embedder, get_reranker
 
 pytestmark = pytest.mark.live
 
@@ -78,3 +78,31 @@ def test_claude_opus_5_answers_one_excerpt_as_a_validated_draft_answer(settings:
     assert result.input_tokens > 0
     assert result.output_tokens > 0
     assert result.latency_ms > 0
+
+
+def test_cohere_rerank_puts_the_passage_that_answers_the_question_first(settings: Settings):
+    reranker = get_reranker(settings.model_copy(update={"reranker_provider": "bedrock"}))
+    assert reranker is not None
+    # Question q004 of the golden set, and three passages copied from the handbook's pages 40,
+    # 53 and 42. The one that answers the question goes last, so finding it first is the
+    # re-ranker's doing.
+    question = (
+        "My mother is having trouble hearing. Does Original Medicare pay for hearing aids, or "
+        "for the exam to fit them?"
+    )
+    passages = [
+        "Medicare covers medically necessary items like oxygen and oxygen equipment, walkers, "
+        "and hospital beds when a doctor or other health care provider orders them for use in "
+        "the home.",
+        "Medicare may cover medically necessary ambulance transportation to a foreign hospital "
+        "only with admission for medically necessary covered inpatient hospital services.",
+        "Note: Original Medicare doesn’t cover hearing aids or exams for fitting hearing aids.",
+    ]
+
+    results = reranker.rerank(question, passages, top_n=3)
+
+    assert results[0].index == 2
+    assert sorted(result.index for result in results) == [0, 1, 2]
+    scores = [result.score for result in results]
+    assert scores == sorted(scores, reverse=True)
+    assert all(0.0 <= score <= 1.0 for score in scores)

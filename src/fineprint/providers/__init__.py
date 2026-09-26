@@ -1,4 +1,4 @@
-"""The two model interfaces and the one implementation of each.
+"""The three model interfaces and the one implementation of each.
 
 Nothing outside this package imports boto3 or the anthropic SDK. Retrieval, ingestion and
 answering ask `factory.get_embedder()` and `factory.get_chat_model()` for an object that
