@@ -11,8 +11,8 @@ by time and names the configuration in the file listing. A configuration name ma
 (`hybrid+rerank`), which is a valid character in both a file name and this join.
 
 Every field part 2 adds defaults to `None`, so the three results files part 1 committed —
-written before any of them existed — still load unchanged; `evals.score` is what fills them in,
-in a second pass over a file `run_golden_set` already wrote (decision D4).
+written before any of them existed — still load unchanged; a later scoring pass is what fills
+them in, over a file `run_golden_set` already wrote (decision D4).
 """
 
 import hashlib
@@ -131,8 +131,8 @@ class QuestionResult:
     review: Review = field(default_factory=Review)
     error: str | None = None  # set when this question failed; the run carried on without it
     # The judge's verdicts behind this question's four RAGAS metrics — the sentences, claims and
-    # per-passage calls `evals.score` made — kept for `--explain` and for anyone auditing a
-    # score. `None` until `evals.score` has scored this question.
+    # per-passage calls a scoring pass made — kept for `--explain` and for anyone auditing a
+    # score. `None` until this question has been scored.
     scoring_detail: dict[str, Any] | None = None
 
     @property
@@ -150,8 +150,8 @@ class QuestionResult:
 class Scoring:
     """Provenance for a scoring pass: which judge, which prompts, and what it cost.
 
-    Set once `evals.score` has scored every question it could; `None` on a file that has not
-    been through that second pass yet, including every file part 1 committed.
+    Set once a scoring pass has scored every question it could; `None` on a file that has not
+    been through that pass yet, including every file part 1 committed.
     """
 
     judge_model: str
