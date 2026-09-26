@@ -90,24 +90,34 @@ ABSTENTION = (
 )
 
 
-def sentence_verdicts(*supported: bool) -> SentenceVerdicts:
-    """A context recall judge's reply: one verdict per reference sentence."""
-    return SentenceVerdicts(
-        verdicts=[
-            SentenceVerdict(reason="passage 1" if ok else "in no passage", supported=ok)
-            for ok in supported
-        ]
-    )
+def sentence_verdicts(*supported: bool, order: list[int] | None = None) -> SentenceVerdicts:
+    """A context recall judge's reply: one verdict per reference sentence, numbered 1, 2, 3...
+
+    `order` restages the verdicts in some sequence other than that plain 1..n a correct reply
+    lists them in, each still carrying the index and reason that belong to it — a benign
+    reordering, for staging a judge that answers out of sequence but numbers correctly.
+    """
+    numbered = [
+        SentenceVerdict(index=index, reason="passage 1" if ok else "in no passage", supported=ok)
+        for index, ok in enumerate(supported, start=1)
+    ]
+    positions = order if order is not None else range(1, len(supported) + 1)
+    return SentenceVerdicts(verdicts=[numbered[position - 1] for position in positions])
 
 
-def passage_verdicts(*useful: bool) -> PassageVerdicts:
-    """A context precision judge's reply: one verdict per passage, in rank order."""
-    return PassageVerdicts(
-        verdicts=[
-            PassageVerdict(reason="gives the premium" if ok else "gives nothing used", useful=ok)
-            for ok in useful
-        ]
-    )
+def passage_verdicts(*useful: bool, order: list[int] | None = None) -> PassageVerdicts:
+    """A context precision judge's reply: one verdict per passage, numbered in rank order.
+
+    `order` restages the verdicts as `sentence_verdicts` does.
+    """
+    numbered = [
+        PassageVerdict(
+            index=index, reason="gives the premium" if ok else "gives nothing used", useful=ok
+        )
+        for index, ok in enumerate(useful, start=1)
+    ]
+    positions = order if order is not None else range(1, len(useful) + 1)
+    return PassageVerdicts(verdicts=[numbered[position - 1] for position in positions])
 
 
 def claim_list(*claims: str) -> AnswerClaims:
@@ -115,14 +125,19 @@ def claim_list(*claims: str) -> AnswerClaims:
     return AnswerClaims(claims=list(claims))
 
 
-def claim_verdicts(*supported: bool) -> ClaimVerdicts:
-    """A faithfulness judge's second reply: one verdict per claim."""
-    return ClaimVerdicts(
-        verdicts=[
-            ClaimVerdict(reason="passage 1" if ok else "page 42 says the opposite", supported=ok)
-            for ok in supported
-        ]
-    )
+def claim_verdicts(*supported: bool, order: list[int] | None = None) -> ClaimVerdicts:
+    """A faithfulness judge's second reply: one verdict per claim, numbered 1, 2, 3...
+
+    `order` restages the verdicts as `sentence_verdicts` does.
+    """
+    numbered = [
+        ClaimVerdict(
+            index=index, reason="passage 1" if ok else "page 42 says the opposite", supported=ok
+        )
+        for index, ok in enumerate(supported, start=1)
+    ]
+    positions = order if order is not None else range(1, len(supported) + 1)
+    return ClaimVerdicts(verdicts=[numbered[position - 1] for position in positions])
 
 
 def generated(*questions: str, noncommittal: bool = False) -> GeneratedQuestions:
@@ -620,6 +635,207 @@ def test_every_metric_gives_up_when_the_judge_miscounts_twice(score, script):
         score(ScriptedChatModel(script))
 
 
+# --- verdict numbering --------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("score", "in_order_script", "permuted_script"),
+    [
+        pytest.param(
+            lambda judge: context_recall(Q001.question, Q001.expected_answer, [PREMIUM], judge),
+            {SentenceVerdicts: [sentence_verdicts(True, False, True)]},
+            {SentenceVerdicts: [sentence_verdicts(True, False, True, order=[2, 3, 1])]},
+            id="context_recall",
+        ),
+        pytest.param(
+            # The live run's actual failure: the judge marked passage 1 useful for a figure that
+            # was really in passage 2. A permuted reply must score exactly as the in-order one
+            # scores, not silently attribute a verdict to the wrong passage.
+            lambda judge: context_precision(
+                Q001.question,
+                Q001.expected_answer,
+                [PREMIUM, HEARING, IRMAA, DEDUCTIBLE, EQUIPMENT],
+                judge,
+            ),
+            {PassageVerdicts: [passage_verdicts(True, False, True, False, False)]},
+            {
+                PassageVerdicts: [
+                    passage_verdicts(True, False, True, False, False, order=[3, 1, 5, 2, 4])
+                ]
+            },
+            id="context_precision",
+        ),
+        pytest.param(
+            lambda judge: faithfulness(QUESTION, ANSWER, [PREMIUM, IRMAA], judge),
+            {
+                AnswerClaims: [claim_list(PREMIUM_CLAIM, IRMAA_CLAIM, HEARING_CLAIM)],
+                ClaimVerdicts: [claim_verdicts(True, True, False)],
+            },
+            {
+                AnswerClaims: [claim_list(PREMIUM_CLAIM, IRMAA_CLAIM, HEARING_CLAIM)],
+                ClaimVerdicts: [claim_verdicts(True, True, False, order=[2, 3, 1])],
+            },
+            id="faithfulness",
+        ),
+    ],
+)
+def test_a_permuted_reply_scores_the_same_as_the_in_order_one(
+    score, in_order_script, permuted_script
+):
+    in_order = score(ScriptedChatModel(in_order_script))
+    permuted = score(ScriptedChatModel(permuted_script))
+
+    assert permuted.value == pytest.approx(in_order.value)
+    assert permuted.detail == in_order.detail
+
+
+@pytest.mark.parametrize(
+    ("score", "script"),
+    [
+        pytest.param(
+            lambda judge: context_recall(Q001.question, Q001.expected_answer, [PREMIUM], judge),
+            {
+                SentenceVerdicts: [
+                    SentenceVerdicts(
+                        verdicts=[
+                            SentenceVerdict(index=1, reason="passage 1", supported=True),
+                            SentenceVerdict(index=1, reason="passage 1", supported=True),
+                            SentenceVerdict(index=3, reason="in no passage", supported=False),
+                        ]
+                    )
+                ]
+                * 2
+            },
+            id="context_recall",
+        ),
+        pytest.param(
+            lambda judge: context_precision(
+                Q001.question, Q001.expected_answer, [PREMIUM, IRMAA], judge
+            ),
+            {
+                PassageVerdicts: [
+                    PassageVerdicts(
+                        verdicts=[
+                            PassageVerdict(index=1, reason="gives the premium", useful=True),
+                            PassageVerdict(index=1, reason="gives the premium", useful=True),
+                        ]
+                    )
+                ]
+                * 2
+            },
+            id="context_precision",
+        ),
+        pytest.param(
+            lambda judge: faithfulness(QUESTION, ANSWER, [PREMIUM], judge),
+            {
+                AnswerClaims: [claim_list(PREMIUM_CLAIM, IRMAA_CLAIM)],
+                ClaimVerdicts: [
+                    ClaimVerdicts(
+                        verdicts=[
+                            ClaimVerdict(index=1, reason="passage 1", supported=True),
+                            ClaimVerdict(index=1, reason="passage 1", supported=True),
+                        ]
+                    )
+                ]
+                * 2,
+            },
+            id="faithfulness",
+        ),
+    ],
+)
+def test_every_indexed_metric_gives_up_when_an_index_repeats(score, script):
+    judge = ScriptedChatModel(script)
+    with pytest.raises(MetricError, match="misnumbered"):
+        score(judge)
+    # Faithfulness makes one extra, unretried call first to list the claims themselves.
+    verdict_calls = [call for call in judge.calls if call.schema is not AnswerClaims]
+    assert len(verdict_calls) == 2, "one retry, no more"
+
+
+@pytest.mark.parametrize(
+    ("score", "script"),
+    [
+        pytest.param(
+            lambda judge: context_recall(Q001.question, Q001.expected_answer, [PREMIUM], judge),
+            {
+                SentenceVerdicts: [
+                    SentenceVerdicts(
+                        verdicts=[
+                            SentenceVerdict(index=1, reason="passage 1", supported=True),
+                            SentenceVerdict(index=2, reason="passage 1", supported=True),
+                            SentenceVerdict(index=9, reason="in no passage", supported=False),
+                        ]
+                    )
+                ]
+                * 2
+            },
+            id="context_recall",
+        ),
+        pytest.param(
+            lambda judge: context_precision(
+                Q001.question, Q001.expected_answer, [PREMIUM, IRMAA], judge
+            ),
+            {
+                PassageVerdicts: [
+                    PassageVerdicts(
+                        verdicts=[
+                            PassageVerdict(index=0, reason="gives the premium", useful=True),
+                            PassageVerdict(index=2, reason="gives nothing used", useful=False),
+                        ]
+                    )
+                ]
+                * 2
+            },
+            id="context_precision",
+        ),
+        pytest.param(
+            lambda judge: faithfulness(QUESTION, ANSWER, [PREMIUM], judge),
+            {
+                AnswerClaims: [claim_list(PREMIUM_CLAIM, IRMAA_CLAIM)],
+                ClaimVerdicts: [
+                    ClaimVerdicts(
+                        verdicts=[
+                            ClaimVerdict(index=1, reason="passage 1", supported=True),
+                            ClaimVerdict(index=5, reason="passage 1", supported=True),
+                        ]
+                    )
+                ]
+                * 2,
+            },
+            id="faithfulness",
+        ),
+    ],
+)
+def test_every_indexed_metric_gives_up_when_an_index_is_out_of_range(score, script):
+    judge = ScriptedChatModel(script)
+    with pytest.raises(MetricError, match="misnumbered"):
+        score(judge)
+    # Faithfulness makes one extra, unretried call first to list the claims themselves.
+    verdict_calls = [call for call in judge.calls if call.schema is not AnswerClaims]
+    assert len(verdict_calls) == 2, "one retry, no more"
+
+
+def test_recall_asks_again_when_the_judges_reply_is_misnumbered_and_uses_the_second_reply():
+    misnumbered = SentenceVerdicts(
+        verdicts=[
+            SentenceVerdict(index=1, reason="passage 1", supported=True),
+            SentenceVerdict(index=1, reason="passage 1", supported=True),
+            SentenceVerdict(index=3, reason="in no passage", supported=False),
+        ]
+    )
+    judge = ScriptedChatModel(
+        {SentenceVerdicts: [misnumbered, sentence_verdicts(True, False, True)]}
+    )
+
+    result = context_recall(Q001.question, Q001.expected_answer, [PREMIUM], judge)
+
+    assert result.value == pytest.approx(2 / 3)
+    first, second = judge.calls
+    assert second.user.startswith(first.user), "the same request, with a note added"
+    assert "instead of 1..3" in second.user
+    assert (result.input_tokens, result.output_tokens) == (1800, 240), "both attempts count"
+
+
 def test_every_detail_can_be_written_into_a_results_file_as_json():
     judge = ScriptedChatModel(
         {
@@ -711,7 +927,12 @@ def test_the_reply_schemas_are_in_the_fingerprint_as_the_judge_receives_them():
 def test_the_fingerprint_is_pinned_so_it_moves_only_when_the_judge_is_shown_something_new():
     # A deliberate change to a prompt or a reply schema updates this value along with it. A change
     # the judge never sees, such as how its replies are parsed, must leave it alone.
-    assert PROMPTS_SHA256 == "ac734ecc83cefef514b9e51004e85c30aa9d67f451b166a392266cd79f503e5f"
+    #
+    # Moved from ac734ecc83cefef514b9e51004e85c30aa9d67f451b166a392266cd79f503e5f when every
+    # verdict schema (sentence, passage, claim) gained a leading `index` field and the three
+    # prompts started asking the judge to number its verdicts and list them in order: the judge
+    # is shown something new in both the schemas and the prompt text.
+    assert PROMPTS_SHA256 == "b1fc65c9a215decdf1389f124f7a24f6383705f8cd221970e7516a6f0aca815e"
 
 
 @pytest.mark.parametrize("index", range(len(PROMPTS)))
