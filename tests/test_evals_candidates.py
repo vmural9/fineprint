@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 import pytest
 
 from evals.candidates import (
+    CANDIDATES_DIR,
     QuestionRank,
     bucket_for,
     build_parser,
@@ -346,6 +347,26 @@ def test_the_results_directory_is_created_when_it_is_missing(wired, tmp_path):
     missing = tmp_path / "results"
 
     exit_code = main(["--chunk-set", "fixed-220w", "--results-dir", str(missing)])
+
+    assert exit_code == 0
+    assert len(list(missing.glob("*.json"))) == 1
+
+
+def test_the_default_results_dir_is_the_candidates_subdirectory():
+    """A subdirectory of the run results, not beside them: `evals.results.load_all`'s glob is
+    not recursive, so a file written here is never mistaken for a run."""
+    args = build_parser().parse_args(["--chunk-set", "fixed-220w"])
+
+    assert args.results_dir == CANDIDATES_DIR
+
+
+def test_the_default_results_directory_is_created_when_it_is_missing(wired, tmp_path, monkeypatch):
+    item = golden("q001", expected_pages=(23,))
+    wired([item], FakeRetriever({item.question: []}))
+    missing = tmp_path / "results" / "candidates"
+    monkeypatch.setattr("evals.candidates.CANDIDATES_DIR", missing)
+
+    exit_code = main(["--chunk-set", "fixed-220w"])
 
     assert exit_code == 0
     assert len(list(missing.glob("*.json"))) == 1
