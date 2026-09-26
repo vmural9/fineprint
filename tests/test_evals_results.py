@@ -129,6 +129,17 @@ def test_a_run_with_every_new_field_filled_survives_being_written_and_read_back(
         questions=[
             replace(
                 question(),
+                metrics=QuestionMetrics(
+                    1.0,
+                    1.0,
+                    1.0,
+                    1.0,
+                    1.0,
+                    context_recall=0.9,
+                    context_precision=0.75,
+                    faithfulness=1.0,
+                    answer_relevance=0.85,
+                ),
                 retrieved=[
                     RetrievedChunk(
                         chunk_id=141,
