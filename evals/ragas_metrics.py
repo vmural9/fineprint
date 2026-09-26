@@ -21,10 +21,14 @@ documentation); every prompt and every formula is written out below.
   avoids the question scores 0.
 
 Every judge call goes through `ChatModel.complete_structured`, so a verdict arrives as a validated
-Pydantic object rather than as free text to be parsed. When the judge is asked for one verdict
-per numbered item and returns a different number, it is asked once more; a second miss raises
-`MetricError`, because verdicts that do not line up with the numbered items cannot be matched to
-them, and a guessed alignment would be a made-up score.
+Pydantic object rather than as free text to be parsed. Every verdict also carries the 1-based
+number of the sentence, passage or claim it is about, so it can be matched to the right one even
+when the judge lists them out of order — the failure a live run once produced, where the
+precision judge marked passage 1 useful for a figure that was actually in passage 2. When the
+judge is asked for one verdict per numbered item and returns the wrong count, or numbers that are
+not `1..n` once each, it is asked once more; a second miss raises `MetricError`, because a
+verdict list that still cannot be matched to the items it is about cannot be scored, and a guessed
+match would be a made-up score.
 
 A judged score is an estimate with its own error, not a measurement like page hit. So each
 `MetricResult` keeps the judge's verdicts and reasons, and `PROMPTS_SHA256` records which prompts
@@ -77,8 +81,11 @@ stands for the answer it gives to the question, and a sentence about the answer 
 5. Give each verdict a one-line reason: the number of the passage that supports the sentence, \
 or what is missing.
 
+6. Give each verdict the number of the sentence it is about, and list your verdicts in that \
+order, sentence 1 first.
+
 Answer in the structured form you are asked for, with exactly one verdict for each numbered \
-sentence, in the same order.\
+sentence, each carrying that sentence's number, listed in the same order.\
 """
 
 CONTEXT_RECALL_USER = """\
@@ -114,8 +121,11 @@ fact from another passage is still useful.
 4. Give each verdict a one-line reason: the fact from the reference answer that the passage \
 gives, or why it gives none.
 
+5. Give each verdict the number of the passage it is about, and list your verdicts in that \
+order, passage 1 first.
+
 Answer in the structured form you are asked for, with exactly one verdict for each numbered \
-passage, in the same order.\
+passage, each carrying that passage's number, listed in the same order.\
 """
 
 CONTEXT_PRECISION_USER = """\
@@ -186,8 +196,11 @@ unsupported.
 4. Give each verdict a one-line reason: the number of the passage that supports the claim, or \
 what is missing or different.
 
+5. Give each verdict the number of the claim it is about, and list your verdicts in that order, \
+claim 1 first.
+
 Answer in the structured form you are asked for, with exactly one verdict for each numbered \
-claim, in the same order.\
+claim, each carrying that claim's number, listed in the same order.\
 """
 
 FAITHFULNESS_VERDICTS_USER = """\
@@ -234,11 +247,20 @@ Your previous reply gave {got} {items}, but exactly {expected} were asked for. R
 exactly {expected} {items}.\
 """
 
+# Added to a request whose reply's verdicts were not numbered 1..expected, each once, when it is
+# sent a second time. A reply that only lists them out of that order is not sent back for this:
+# `_ask_for_list` repairs it by sorting, since the numbers alone are enough to put it back in order.
+INDEX_RETRY_NOTE = """\
+Your previous reply {problem}. Reply again with exactly {expected} {items}, numbered 1..{expected} \
+in whatever order you list them, each number used once.\
+"""
+
 # Shown in place of the passages when retrieval returned none, so the judge is told so.
 NO_PASSAGES = "No passages were retrieved."
 
-# What the judge must reply with, one schema per prompt. In each verdict the reason comes before
-# the yes or no, so the judge explains before it decides, the order the RAGAS prompts ask for.
+# What the judge must reply with, one schema per prompt. In each verdict the index comes first,
+# so its number is unambiguous, then the reason before the yes or no, so the judge explains
+# before it decides — the order the RAGAS prompts ask for.
 
 
 def _list_from_json_string(value: Any) -> Any:
@@ -265,6 +287,9 @@ _OR_JSON_STRING = BeforeValidator(_list_from_json_string)
 class SentenceVerdict(BaseModel):
     """The judge's call on one sentence of the reference answer."""
 
+    index: int = Field(
+        description="The 1-based number of the sentence, as it is numbered in the prompt"
+    )
     reason: str = Field(
         description="One line: the passage that supports the sentence, or what is missing"
     )
@@ -282,6 +307,9 @@ class SentenceVerdicts(BaseModel):
 class PassageVerdict(BaseModel):
     """The judge's call on one retrieved passage."""
 
+    index: int = Field(
+        description="The 1-based number of the passage, as it is numbered in the prompt"
+    )
     reason: str = Field(
         description="One line: the fact from the reference answer it gives, or why it gives none"
     )
@@ -307,6 +335,9 @@ class AnswerClaims(BaseModel):
 class ClaimVerdict(BaseModel):
     """The judge's call on one claim."""
 
+    index: int = Field(
+        description="The 1-based number of the claim, as it is numbered in the prompt"
+    )
     reason: str = Field(
         description="One line: the passage that supports the claim, or what is missing or different"
     )
@@ -360,6 +391,7 @@ PROMPTS: tuple[str, ...] = (
     ANSWER_RELEVANCE_SYSTEM,
     ANSWER_RELEVANCE_USER,
     RETRY_NOTE,
+    INDEX_RETRY_NOTE,
     NO_PASSAGES,
     REPLY_SCHEMAS,
 )
@@ -497,16 +529,48 @@ def cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:
     return math.sumprod(a, b) / lengths if lengths else 0.0
 
 
+def _index_problem(entries: Sequence[Any], expected: int) -> str | None:
+    """None when `entries`' 1-based `index` fields are exactly `1..expected`, each used once, in
+    whatever order; otherwise a one-line description of the numbers they gave instead.
+
+    Some other order than `1..expected` is not a problem: `_ask_for_list` repairs it by sorting
+    on `index` once this returns `None`. A repeat, a gap or a number outside `1..expected` is a
+    different kind of miscount, one that cannot be matched back to the sentence, passage or claim
+    the entry was supposed to be a verdict on — the failure that let a passage's verdict be
+    attributed to the wrong passage — and gets the same retry a wrong count of entries does.
+    """
+    indexes = [entry.index for entry in entries]
+    if sorted(indexes) == list(range(1, expected + 1)):
+        return None
+    return f"gave the numbers {indexes} instead of 1..{expected}, each used exactly once"
+
+
 def _ask_for_list[T: BaseModel](
-    judge: ChatModel, system: str, user: str, schema: type[T], *, items: str, expected: int
+    judge: ChatModel,
+    system: str,
+    user: str,
+    schema: type[T],
+    *,
+    items: str,
+    expected: int,
+    indexed: bool = False,
 ) -> LLMResult[T]:
     """Ask the judge for a reply whose list field `items` holds exactly `expected` entries.
 
     A schema can say "a list of verdicts" but not "exactly five", so the count is checked here.
-    On a wrong count the judge is asked again and told what went wrong; a second wrong count
-    raises `MetricError`. The tokens in the result cover both attempts, since both were paid for.
+    When `indexed` is set, each entry also carries a 1-based `index` naming which numbered
+    sentence, passage or claim it is a verdict on; `_index_problem` checks that those numbers are
+    `1..expected`, each once, and a reply that only gives them in some other order is re-sorted
+    into place before it is returned.
+
+    On a wrong count, or — when `indexed` — on numbers that are not a plain reordering of
+    `1..expected`, the judge is asked again and told what went wrong; a second bad reply raises
+    `MetricError`, because a reply that still cannot be matched to the items it is about cannot be
+    scored, and a guessed match would be a made-up score. The tokens in the result cover both
+    attempts, since both were paid for.
     """
     counts: list[int] = []
+    index_problems: list[str] = []
     input_tokens = output_tokens = 0
     latency_ms = 0.0
     request = user
@@ -515,19 +579,32 @@ def _ask_for_list[T: BaseModel](
         input_tokens += result.input_tokens
         output_tokens += result.output_tokens
         latency_ms += result.latency_ms
-        counts.append(len(getattr(result.parsed, items)))
+        entries = getattr(result.parsed, items)
+        counts.append(len(entries))
         if counts[-1] == expected:
-            return replace(
-                result,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                latency_ms=latency_ms,
-            )
-        note = RETRY_NOTE.format(got=counts[-1], items=items, expected=expected)
+            problem = _index_problem(entries, expected) if indexed else None
+            if problem is None:
+                if indexed:
+                    entries.sort(key=lambda entry: entry.index)
+                return replace(
+                    result,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    latency_ms=latency_ms,
+                )
+            index_problems.append(problem)
+            note = INDEX_RETRY_NOTE.format(problem=problem, items=items, expected=expected)
+        else:
+            note = RETRY_NOTE.format(got=counts[-1], items=items, expected=expected)
         request = f"{user}\n\n{note}"
+    if counts[0] != expected or counts[1] != expected:
+        raise MetricError(
+            f"the judge returned {counts[0]} and then {counts[1]} {items} where {expected} were "
+            f"asked for ({schema.__name__})"
+        )
     raise MetricError(
-        f"the judge returned {counts[0]} and then {counts[1]} {items} where {expected} were "
-        f"asked for ({schema.__name__})"
+        f"the judge's {items} for {schema.__name__} were misnumbered twice: "
+        f"{index_problems[0]}; then {index_problems[1]}"
     )
 
 
@@ -540,7 +617,9 @@ def context_recall(
     sentences have no support in them, so no answer written from these passages could be
     complete.
 
-    `detail["sentences"]` lists each sentence with the judge's `supported` and `reason`.
+    Each verdict carries the number of the sentence it is about, so a reply that lists them out
+    of order is still matched to the right sentence instead of silently scoring the wrong one.
+    `detail["sentences"]` lists each sentence with the judge's `index`, `supported` and `reason`.
     """
     sentences = split_sentences(expected_answer)
     if not sentences:
@@ -557,13 +636,19 @@ def context_recall(
         schema=SentenceVerdicts,
         items="verdicts",
         expected=len(sentences),
+        indexed=True,
     )
     verdicts = result.parsed.verdicts
     return MetricResult(
         value=sum(verdict.supported for verdict in verdicts) / len(sentences),
         detail={
             "sentences": [
-                {"sentence": sentence, "supported": verdict.supported, "reason": verdict.reason}
+                {
+                    "index": verdict.index,
+                    "sentence": sentence,
+                    "supported": verdict.supported,
+                    "reason": verdict.reason,
+                }
                 for sentence, verdict in zip(sentences, verdicts, strict=True)
             ]
         },
@@ -582,7 +667,11 @@ def context_precision(
     useful passages sink down the list, and 0.0 when none is useful. With no passages there is
     nothing to judge, so the score is 0.0 and the judge is not asked.
 
-    `detail["passages"]` lists each passage's `rank` with the judge's `useful` and `reason`.
+    Each verdict carries the number of the passage it is about, so a reply that lists them out of
+    order is still matched to the right passage — this is what stops a judge that says "useful,
+    for $202.90" from having that verdict misattributed to whichever passage came first instead
+    of the one the figure is actually in. `detail["passages"]` lists each passage's `rank` and
+    the judge's `index`, `useful` and `reason`.
     """
     if not contexts:
         return MetricResult(value=0.0, detail={"passages": []}, input_tokens=0, output_tokens=0)
@@ -598,13 +687,19 @@ def context_precision(
         schema=PassageVerdicts,
         items="verdicts",
         expected=len(contexts),
+        indexed=True,
     )
     verdicts = result.parsed.verdicts
     return MetricResult(
         value=average_precision([verdict.useful for verdict in verdicts]),
         detail={
             "passages": [
-                {"rank": rank, "useful": verdict.useful, "reason": verdict.reason}
+                {
+                    "rank": rank,
+                    "index": verdict.index,
+                    "useful": verdict.useful,
+                    "reason": verdict.reason,
+                }
                 for rank, verdict in enumerate(verdicts, start=1)
             ]
         },
@@ -621,7 +716,9 @@ def faithfulness(question: str, answer: str, contexts: list[str], judge: ChatMod
     has nothing to check: its value is None and `detail["no_claims"]` is true. Whether it was
     right to say so is what abstention accuracy measures.
 
-    `detail["claims"]` lists each claim with the judge's `supported` and `reason`.
+    Each verdict carries the number of the claim it is about, so a reply that lists them out of
+    order is still matched to the right claim. `detail["claims"]` lists each claim with the
+    judge's `index`, `supported` and `reason`.
     """
     listed = judge.complete_structured(
         system=FAITHFULNESS_CLAIMS_SYSTEM,
@@ -647,6 +744,7 @@ def faithfulness(question: str, answer: str, contexts: list[str], judge: ChatMod
         schema=ClaimVerdicts,
         items="verdicts",
         expected=len(claims),
+        indexed=True,
     )
     verdicts = checked.parsed.verdicts
     return MetricResult(
@@ -654,7 +752,12 @@ def faithfulness(question: str, answer: str, contexts: list[str], judge: ChatMod
         detail={
             "no_claims": False,
             "claims": [
-                {"claim": claim, "supported": verdict.supported, "reason": verdict.reason}
+                {
+                    "index": verdict.index,
+                    "claim": claim,
+                    "supported": verdict.supported,
+                    "reason": verdict.reason,
+                }
                 for claim, verdict in zip(claims, verdicts, strict=True)
             ],
         },
