@@ -52,4 +52,5 @@ addopts = "-m 'not live'"
 markers = [
     "integration: needs a running Postgres; skips with a reason when DATABASE_URL is unreachable",
     "live: really calls AWS Bedrock; deselected by default and skipped without credentials",
+    "corpus: needs the handbook PDF under data/raw; skipped when absent",
 ]
