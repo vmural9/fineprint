@@ -15,13 +15,22 @@ stay empty until the part that fills them.
 
 import argparse
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
 from evals import metrics
+from evals.golden import DEFAULT_GOLDEN_SET, GoldenItem, GoldenSetError, load_golden_set
 from evals.metrics import NOT_MEASURED, Aggregates
-from evals.results import REPO_ROOT, RESULTS_DIR, ResultsError, RunResult, latest_per_config
+from evals.results import (
+    REPO_ROOT,
+    RESULTS_DIR,
+    QuestionResult,
+    ResultsError,
+    RetrievedChunk,
+    RunResult,
+    latest_per_config,
+)
 
 SCOREBOARD_PATH = REPO_ROOT / "evals" / "scoreboard.md"
 README_PATH = REPO_ROOT / "README.md"
@@ -50,15 +59,28 @@ HEADLINE_COLUMNS = (
 LEGEND = (
     f"`{NOT_MEASURED}` means not measured yet, never a stand-in value. Part 1 fills Page hit@5 "
     "and Manual pass; part 2 the four RAGAS columns; part 3 cost per query and p95 latency; "
-    "part 4 the judge and adversarial columns."
+    "part 4 the judge and adversarial columns. The four RAGAS columns are scored by the judge "
+    "model named in the provenance table and are LLM-judged estimates."
 )
 
-# The order part 1's configurations appear in. Anything else follows, alphabetically.
-CONFIG_ORDER = ("hybrid", "vector-only", "lexical-only")
+# The order part 1 and part 2's configurations appear in. Anything else follows, alphabetically.
+CONFIG_ORDER = (
+    "hybrid",
+    "hybrid+rerank",
+    "sections",
+    "sections+rerank",
+    "vector-only",
+    "lexical-only",
+)
 
 # Retrieval metrics only apply to questions the handbook answers, so the breakdown by question
 # type has a column per answerable type.
 ANSWERABLE_TYPES = ("lookup", "table", "multi_section")
+
+# The cut every configuration returns to the caller, the same "5" as `page_hit@5`. The
+# re-ranker movement table classifies a question's first covering chunk by whether its
+# pre-re-rank `fused_rank` already sat inside this cut.
+RERANK_TOP_K = 5
 
 NO_RUNS = "No eval has been run yet, so the table has no rows."
 COMMIT_LENGTH = 7
@@ -78,8 +100,17 @@ def now_stamp() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
 
-def render(results: Mapping[str, RunResult], generated_at: str) -> str:
-    """The whole of `evals/scoreboard.md`."""
+def render(
+    results: Mapping[str, RunResult],
+    generated_at: str,
+    golden: Mapping[str, GoldenItem] | None = None,
+) -> str:
+    """The whole of `evals/scoreboard.md`.
+
+    `golden` is the golden set keyed by id, needed only by the re-ranker movement table. Leave
+    it out to have that table load the committed golden set itself, lazily, and only when some
+    row actually has a re-ranker; a test passes a small one of its own instead.
+    """
     lines = [
         "# Scoreboard",
         "",
@@ -94,7 +125,7 @@ def render(results: Mapping[str, RunResult], generated_at: str) -> str:
         LEGEND,
     ]
     if results:
-        lines += ["", *_detail_section(results)]
+        lines += ["", *_detail_section(results, golden)]
     return "\n".join(lines) + "\n"
 
 
@@ -147,7 +178,7 @@ def _disagree(results: Mapping[str, RunResult]) -> bool:
 
 
 def _headline_rows(results: Mapping[str, RunResult]) -> list[list[str]]:
-    """One row per configuration: the two part 1 columns, and a dash for every later part."""
+    """One row per configuration: part 1's two columns, part 2's four, a dash for the rest."""
     rows = []
     for name, result in _ordered(results):
         totals = result.aggregates
@@ -156,7 +187,11 @@ def _headline_rows(results: Mapping[str, RunResult]) -> list[list[str]]:
                 name,
                 metrics.as_percentage(totals.page_hit),
                 _manual_pass(totals),
-                *[NOT_MEASURED] * (len(HEADLINE_COLUMNS) - 3),
+                metrics.as_score(totals.context_recall),
+                metrics.as_score(totals.context_precision),
+                metrics.as_score(totals.faithfulness),
+                metrics.as_score(totals.answer_relevance),
+                *[NOT_MEASURED] * (len(HEADLINE_COLUMNS) - 7),
             ]
         )
     return rows
@@ -169,10 +204,47 @@ def _manual_pass(totals: Aggregates) -> str:
     return f"{metrics.as_percentage(totals.manual.rate)} ({totals.manual.reviewed} reviewed)"
 
 
-def _detail_section(results: Mapping[str, RunResult]) -> list[str]:
-    """The part 1 detail: the secondary metrics, the breakdown by type, and the provenance."""
+MOVEMENT_COLUMNS = (
+    "Configuration",
+    "Lifted into the top 5",
+    "Already in the top 5",
+    "No expected page in the top 5",
+    "Answerable questions",
+)
+
+MOVEMENT_NOTE = (
+    "Only rows with a re-ranker are in this table. For each answerable question it takes the "
+    "first stored chunk covering an expected page or one of its `alt_pages` alternates: "
+    "`fused_rank` > 5 means that chunk sat outside the top 5 before re-ranking and re-ranking "
+    "lifted it in; `fused_rank` ≤ 5 means it was already there. A page the re-ranker pushed "
+    "*out* of the top 5 cannot be seen from the stored top 5, so it never appears here — that "
+    "loss is what a lower `page_hit@5` on this row than on its un-re-ranked twin (`hybrid` or "
+    "`sections`) shows."
+)
+
+PROVENANCE_COLUMNS = (
+    "Configuration",
+    "Mode",
+    "Chunk set",
+    "k",
+    "Candidates",
+    "RRF k",
+    "Reranker",
+    "Embedding model",
+    "Answer model",
+    "Judge model",
+    "Commit",
+    "Run",
+)
+
+
+def _detail_section(
+    results: Mapping[str, RunResult], golden: Mapping[str, GoldenItem] | None = None
+) -> list[str]:
+    """The detail behind the headline: secondary metrics, breakdowns by type, the re-ranker's
+    effect, and where every row came from."""
     lines = [
-        "## Part 1 detail",
+        "## Detail",
         "",
         "### Secondary metrics",
         "",
@@ -193,30 +265,63 @@ def _detail_section(results: Mapping[str, RunResult]) -> list[str]:
         "",
         "### page_hit@5 by question type",
         "",
-        *_table(("Configuration", *ANSWERABLE_TYPES), _by_type_rows(results)),
+        *_table(
+            ("Configuration", *ANSWERABLE_TYPES),
+            _type_rows(results, "page_hit", metrics.as_percentage),
+        ),
         "",
         "Each cell is the share of that type's questions whose expected page was retrieved, "
         "with the number of questions of that type in brackets. Unanswerable questions have no "
         "expected pages, so they are not in this table; what they measure is "
         "`abstention_accuracy` above.",
         "",
-        "### What produced each row",
+        "### page_recall@5 by question type",
         "",
         *_table(
-            (
-                "Configuration",
-                "Mode",
-                "Chunk set",
-                "k",
-                "Candidates",
-                "RRF k",
-                "Embedding model",
-                "Answer model",
-                "Commit",
-                "Run",
-            ),
-            _run_rows(results),
+            ("Configuration", *ANSWERABLE_TYPES),
+            _type_rows(results, "page_recall", metrics.as_percentage),
         ),
+        "",
+        "Each cell is the mean share of that type's questions' expected pages that were found, "
+        "with the number of questions of that type in brackets.",
+        "",
+        "### context_recall by question type",
+        "",
+        *_table(
+            ("Configuration", *ANSWERABLE_TYPES),
+            _type_rows(results, "context_recall", metrics.as_score),
+        ),
+        "",
+        "Each cell is the mean share of the expected answer's sentences the retrieved passages "
+        "supported, for that type's questions a scoring pass has scored, with that count in "
+        "brackets.",
+        "",
+        "### faithfulness by question type",
+        "",
+        *_table(
+            ("Configuration", *ANSWERABLE_TYPES),
+            _type_rows(results, "faithfulness", metrics.as_score),
+        ),
+        "",
+        "Each cell is the mean share of the generated answer's own claims the retrieved "
+        "passages supported, for that type's questions with at least one claim to check, with "
+        "that count in brackets.",
+    ]
+    movement = _movement_rows(results, golden)
+    if movement:
+        lines += [
+            "",
+            "### Re-ranker movement",
+            "",
+            *_table(MOVEMENT_COLUMNS, movement),
+            "",
+            MOVEMENT_NOTE,
+        ]
+    lines += [
+        "",
+        "### What produced each row",
+        "",
+        *_table(PROVENANCE_COLUMNS, _run_rows(results)),
     ]
     failures = _failure_lines(results)
     if failures:
@@ -245,32 +350,109 @@ def _secondary_rows(results: Mapping[str, RunResult]) -> list[list[str]]:
     return rows
 
 
-def _by_type_rows(results: Mapping[str, RunResult]) -> list[list[str]]:
-    """`page_hit@5` per question type: which kind of question retrieval is failing on."""
+def _type_rows(
+    results: Mapping[str, RunResult], metric_name: str, render_value: Callable[[float], str]
+) -> list[list[str]]:
+    """One `QuestionMetrics` field broken down by question type, in the shape of the
+    `page_hit@5` table: which kind of question a metric is weak on.
+
+    `render_value` formats the type's mean the same way the headline table does for that
+    metric — a percentage for the part 1 metrics, two decimals for the RAGAS ones. A type with
+    no scored question of that kind in this run is a dash, never a zero.
+    """
     rows = []
     for name, result in _ordered(results):
         cells = [name]
         for question_type in ANSWERABLE_TYPES:
             scored = [
-                row.metrics.page_hit
+                getattr(row.metrics, metric_name)
                 for row in result.questions
-                if row.type == question_type and row.metrics.page_hit is not None
+                if row.type == question_type and getattr(row.metrics, metric_name) is not None
             ]
             cells.append(
                 NOT_MEASURED
                 if not scored
-                else f"{metrics.as_percentage(metrics.mean(scored))} ({len(scored)})"
+                else f"{render_value(metrics.mean(scored))} ({len(scored)})"
             )
         rows.append(cells)
     return rows
 
 
+def _movement_rows(
+    results: Mapping[str, RunResult], golden: Mapping[str, GoldenItem] | None
+) -> list[list[str]]:
+    """One row per re-ranked configuration: how many answerable questions the re-ranker lifted
+    into the top 5, left there already, or could not find an expected page for at all.
+
+    Configurations with no re-ranker (`config.reranker` is `None`) are left out entirely, so
+    this is `[]` — and the whole table is omitted — until a re-ranked row exists. The golden set
+    is loaded lazily, only once that happens, so an ordinary scoreboard run never touches it.
+    """
+    reranked = [(name, result) for name, result in _ordered(results) if result.config.reranker]
+    if not reranked:
+        return []
+    items = golden if golden is not None else _golden_by_id()
+
+    rows = []
+    for name, result in reranked:
+        lifted = already = missing = 0
+        for question in result.questions:
+            if not question.answerable:
+                continue
+            chunk = _first_covering_chunk(question, items.get(question.id))
+            if chunk is None:
+                missing += 1
+            elif chunk.fused_rank is not None and chunk.fused_rank > RERANK_TOP_K:
+                lifted += 1
+            else:
+                already += 1
+        rows.append(
+            [name, str(lifted), str(already), str(missing), str(lifted + already + missing)]
+        )
+    return rows
+
+
+def _first_covering_chunk(
+    question: QuestionResult, item: GoldenItem | None
+) -> RetrievedChunk | None:
+    """The lowest-rank stored chunk covering an expected page or one of its alternates.
+
+    The same rule `metrics.found_expected_pages` uses to decide a page was found at all, applied
+    to the stored top-k rather than the full candidate pool. Falls back to the question's own
+    `expected_pages`, with no alternates, when the golden item cannot be found, rather than
+    failing the whole row over one missing id.
+    """
+    satisfying_pages = _satisfying_pages(question, item)
+    covering = [
+        chunk
+        for chunk in question.retrieved
+        if any(metrics.covers(chunk, page) for page in satisfying_pages)
+    ]
+    return min(covering, key=lambda chunk: chunk.rank, default=None)
+
+
+def _satisfying_pages(question: QuestionResult, item: GoldenItem | None) -> set[int]:
+    """Every page that counts as satisfying one of this question's expected pages."""
+    if item is None:
+        return set(question.expected_pages)
+    return {
+        page for expected in question.expected_pages for page in item.pages_that_satisfy(expected)
+    }
+
+
+def _golden_by_id() -> dict[str, GoldenItem]:
+    """The committed golden set, keyed by id — read only for the re-ranker movement table."""
+    return {item.id: item for item in load_golden_set(DEFAULT_GOLDEN_SET)}
+
+
 def _run_rows(results: Mapping[str, RunResult]) -> list[list[str]]:
-    """Where each row came from: the configuration, the commit, and the results file."""
+    """Where each row came from: the configuration, the models involved, the commit, and the
+    results file."""
     rows = []
     for name, result in _ordered(results):
         config = result.config
         commit = result.git.commit[:COMMIT_LENGTH] if result.git.commit else NOT_MEASURED
+        judge_model = result.scoring.judge_model if result.scoring else NOT_MEASURED
         rows.append(
             [
                 name,
@@ -279,8 +461,10 @@ def _run_rows(results: Mapping[str, RunResult]) -> list[list[str]]:
                 str(config.top_k),
                 str(config.candidates),
                 str(config.rrf_k),
+                config.reranker or NOT_MEASURED,
                 config.embedding_model,
                 config.llm_model or NOT_MEASURED,
+                judge_model,
                 f"{commit} (dirty)" if result.git.dirty else commit,
                 result.run_id,
             ]
@@ -384,7 +568,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_ERROR
 
     generated_at = now_stamp()
-    scoreboard = render(results, generated_at)
+    try:
+        scoreboard = render(results, generated_at)
+    except GoldenSetError as error:
+        print(f"ERROR: {DEFAULT_GOLDEN_SET} failed validation:\n{error}", file=sys.stderr)
+        return EXIT_ERROR
     readme_text = _read(args.readme)
     if not readme_text:
         print(f"ERROR: {args.readme} does not exist", file=sys.stderr)

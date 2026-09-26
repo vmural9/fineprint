@@ -5,7 +5,7 @@
 
 Golden set: 40 questions · Corpus: Medicare & You, 2026 edition, sha256 `d7a341bc3d2d`
 
-Generated at 2026-09-21 01:21 UTC.
+Generated at 2026-09-26 14:23 UTC.
 
 | Configuration | Page hit@5 | Manual pass | Context recall | Context precision | Faithfulness | Answer relevance | Cost per query | p95 latency | Judge pass | Adversarial pass |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -13,9 +13,9 @@ Generated at 2026-09-21 01:21 UTC.
 | vector-only | 88.2% | — | — | — | — | — | — | — | — | — |
 | lexical-only | 67.6% | — | — | — | — | — | — | — | — | — |
 
-`—` means not measured yet, never a stand-in value. Part 1 fills Page hit@5 and Manual pass; part 2 the four RAGAS columns; part 3 cost per query and p95 latency; part 4 the judge and adversarial columns.
+`—` means not measured yet, never a stand-in value. Part 1 fills Page hit@5 and Manual pass; part 2 the four RAGAS columns; part 3 cost per query and p95 latency; part 4 the judge and adversarial columns. The four RAGAS columns are scored by the judge model named in the provenance table and are LLM-judged estimates.
 
-## Part 1 detail
+## Detail
 
 ### Secondary metrics
 
@@ -37,10 +37,40 @@ Generated at 2026-09-21 01:21 UTC.
 
 Each cell is the share of that type's questions whose expected page was retrieved, with the number of questions of that type in brackets. Unanswerable questions have no expected pages, so they are not in this table; what they measure is `abstention_accuracy` above.
 
+### page_recall@5 by question type
+
+| Configuration | lookup | table | multi_section |
+| --- | --- | --- | --- |
+| hybrid | 73.3% (15) | 88.9% (9) | 90.0% (10) |
+| vector-only | 80.0% (15) | 88.9% (9) | 100.0% (10) |
+| lexical-only | 66.7% (15) | 66.7% (9) | 55.0% (10) |
+
+Each cell is the mean share of that type's questions' expected pages that were found, with the number of questions of that type in brackets.
+
+### context_recall by question type
+
+| Configuration | lookup | table | multi_section |
+| --- | --- | --- | --- |
+| hybrid | — | — | — |
+| vector-only | — | — | — |
+| lexical-only | — | — | — |
+
+Each cell is the mean share of the expected answer's sentences the retrieved passages supported, for that type's questions a scoring pass has scored, with that count in brackets.
+
+### faithfulness by question type
+
+| Configuration | lookup | table | multi_section |
+| --- | --- | --- | --- |
+| hybrid | — | — | — |
+| vector-only | — | — | — |
+| lexical-only | — | — | — |
+
+Each cell is the mean share of the generated answer's own claims the retrieved passages supported, for that type's questions with at least one claim to check, with that count in brackets.
+
 ### What produced each row
 
-| Configuration | Mode | Chunk set | k | Candidates | RRF k | Embedding model | Answer model | Commit | Run |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | hybrid | fixed-220w | 5 | 20 | 60 | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | b049a28 (dirty) | 20260921T012044Z_hybrid |
-| vector-only | vector | fixed-220w | 5 | 20 | 60 | amazon.titan-embed-text-v2:0 | — | b049a28 (dirty) | 20260921T011428Z_vector-only |
-| lexical-only | lexical | fixed-220w | 5 | 20 | 60 | amazon.titan-embed-text-v2:0 | — | b049a28 | 20260921T011412Z_lexical-only |
+| Configuration | Mode | Chunk set | k | Candidates | RRF k | Reranker | Embedding model | Answer model | Judge model | Commit | Run |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| hybrid | hybrid | fixed-220w | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | — | b049a28 (dirty) | 20260921T012044Z_hybrid |
+| vector-only | vector | fixed-220w | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | — | — | b049a28 (dirty) | 20260921T011428Z_vector-only |
+| lexical-only | lexical | fixed-220w | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | — | — | b049a28 | 20260921T011412Z_lexical-only |

@@ -57,7 +57,7 @@ renders as `—`; it never carries a placeholder value.
 
 Golden set: 40 questions · Corpus: Medicare & You, 2026 edition, sha256 `d7a341bc3d2d`
 
-Generated at 2026-09-21 01:21 UTC.
+Generated at 2026-09-26 14:23 UTC.
 
 | Configuration | Page hit@5 | Manual pass | Context recall | Context precision | Faithfulness | Answer relevance | Cost per query | p95 latency | Judge pass | Adversarial pass |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -65,7 +65,7 @@ Generated at 2026-09-21 01:21 UTC.
 | vector-only | 88.2% | — | — | — | — | — | — | — | — | — |
 | lexical-only | 67.6% | — | — | — | — | — | — | — | — | — |
 
-`—` means not measured yet, never a stand-in value. Part 1 fills Page hit@5 and Manual pass; part 2 the four RAGAS columns; part 3 cost per query and p95 latency; part 4 the judge and adversarial columns.
+`—` means not measured yet, never a stand-in value. Part 1 fills Page hit@5 and Manual pass; part 2 the four RAGAS columns; part 3 cost per query and p95 latency; part 4 the judge and adversarial columns. The four RAGAS columns are scored by the judge model named in the provenance table and are LLM-judged estimates.
 
 The secondary metrics and the breakdown by question type are in [evals/scoreboard.md](evals/scoreboard.md).
 <!-- scoreboard:end -->

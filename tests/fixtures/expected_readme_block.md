@@ -8,9 +8,10 @@ Generated at 2026-09-21 03:15 UTC.
 | Configuration | Page hit@5 | Manual pass | Context recall | Context precision | Faithfulness | Answer relevance | Cost per query | p95 latency | Judge pass | Adversarial pass |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | hybrid | 66.7% | 50.0% (2 reviewed) | — | — | — | — | — | — | — | — |
+| hybrid+rerank | 66.7% | — | 0.50 | 0.67 | 0.80 | 0.53 | — | — | — | — |
 | lexical-only | 66.7% | — | — | — | — | — | — | — | — | — |
 
-`—` means not measured yet, never a stand-in value. Part 1 fills Page hit@5 and Manual pass; part 2 the four RAGAS columns; part 3 cost per query and p95 latency; part 4 the judge and adversarial columns.
+`—` means not measured yet, never a stand-in value. Part 1 fills Page hit@5 and Manual pass; part 2 the four RAGAS columns; part 3 cost per query and p95 latency; part 4 the judge and adversarial columns. The four RAGAS columns are scored by the judge model named in the provenance table and are LLM-judged estimates.
 
 The secondary metrics and the breakdown by question type are in [evals/scoreboard.md](evals/scoreboard.md).
 <!-- scoreboard:end -->
