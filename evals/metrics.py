@@ -21,8 +21,8 @@ Part 2 adds four more fields to `QuestionMetrics` and `Aggregates`: `context_rec
 `context_precision`, `faithfulness` and `answer_relevance`, the four RAGAS-style metrics judged
 by a language model rather than computed from page numbers. This module only carries their
 fields and folds them into a run's aggregates with the same `None`-ignoring `mean` as everything
-else here; `evals/ragas_metrics.py` defines what each one measures, and a later scoring pass over
-a results file is what actually computes them, once that file has retrieved text to judge.
+else here; `evals/ragas_metrics.py` defines what each one measures, and `python -m evals.score`
+computes them in a second pass over a results file, from the retrieved text the file records.
 """
 
 from collections.abc import Iterable, Sequence
@@ -198,7 +198,7 @@ def score_question(
     """Score one question. Leave `citations` and `found_in_handbook` out on a retrieval-only run.
 
     This fills only the five part 1 metrics. The four RAGAS metrics are left at their default
-    `None` here; a later scoring pass fills them in, once there is a judge to ask.
+    `None` here; `python -m evals.score` fills them in afterwards, with a judge model to ask.
     """
     return QuestionMetrics(
         page_hit=page_hit(item, chunks),

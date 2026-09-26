@@ -164,6 +164,66 @@ it ran — all `null` until a scoring pass has filled them in, the same way `man
 for the judge's own verdicts behind its four scores — which sentences and claims it found, and
 why — empty until then.
 
+## Scoring a run
+
+`python -m evals.score` is the second pass over a results file. After `run_golden_set` has written
+a run, and before `scoreboard` regenerates the tables, it has a judge model score every question on
+the four RAGAS metrics above and writes the scores into the same file:
+
+```bash
+uv run python -m evals.score evals/results/<run_id>.json                  # score what has no score yet
+uv run python -m evals.score evals/results/<run_id>.json --explain q001   # one question's working
+uv run python -m evals.score evals/results/<run_id>.json --rescore        # score every question again
+```
+
+The judge is Claude Sonnet 5 (the `JUDGE_MODEL` setting; `--judge-model ID` picks another for one
+pass), a different model from the one that writes the answers, so no answer is scored by its own
+author. Answer relevance embeds with the same Titan model retrieval searches with. The pass calls
+Bedrock: an answered question takes five judge calls — one each for recall, precision and
+relevance, two for faithfulness — and four embeddings, and more calls when a reply has to be asked
+for again.
+
+What a question is scored on depends on what the run recorded for it:
+
+| The question | Context recall and precision | Faithfulness and answer relevance |
+|---|---|---|
+| is `unanswerable` | — | — |
+| has no answer (a `--retrieval-only` run) | scored | — |
+| was answered | scored | scored |
+
+An unanswerable question's reference answer says the handbook does not give this: there are no
+facts for retrieval to find and no claims to check, and abstention accuracy is its measure. An
+answer that makes no factual claims at all, such as "the handbook does not say", has no
+faithfulness score either. A question whose retrieval failed during the run is skipped.
+
+- **Passages come from the file.** The judge reads each retrieved chunk's text as the results file
+  recorded it, never from the database, whose chunks can be re-ingested after a run. A file from
+  before results files carried chunk text, such as the three part 1 runs, is refused, and the
+  message names the `run_golden_set` command that makes a scorable one.
+- **Saved after every question.** An interrupted pass loses nothing: run the same command again
+  and it carries on, leaving the questions that already have scores alone. `--rescore` clears
+  every score in the file and scores every question again.
+- **The working is kept.** Each question's `scoring_detail` holds the judge's verdicts: every
+  sentence of the reference answer and whether the passages support it, every passage and whether
+  it is useful, every claim in the answer and whether it is supported, and the questions written
+  back from the answer with their similarity to the one asked, plus the judge tokens the question
+  took. The file's `scoring` block names the judge model, the embedding model and the sha256 of the
+  prompts in `ragas_metrics.py`, with the token totals behind the file's scores. Scores from a
+  different judge, embedding model or prompt text are never added to a scored file: the pass asks
+  for `--rescore` instead.
+- **A judge failure stays with its question.** A reply that will not validate, or a count of
+  verdicts still wrong after one retry, is recorded as an `error` in that question's
+  `scoring_detail`; its four scores stay empty and the pass goes on. The next pass tries it again.
+- **`--explain QID`** prints one question's working in plain text: each sentence of the expected
+  answer with the judge's verdict and reason, each passage with its verdict, each claim in the
+  answer with its verdict, the questions written back with their similarities, and the four
+  numbers. A scored question is explained from the file with no model call; one not yet scored is
+  judged afresh, and `--rescore` forces that. It never writes to the file.
+
+Exit codes: `0` when every question was scored or skipped; `1` when the judge failed on at least
+one question, which the summary names; `2` when the file cannot be scored as it stands, in which
+case nothing is called and nothing is written.
+
 ## Candidate-rank diagnostic
 
 A re-ranker can only reorder chunks retrieval already put in front of it. Before crediting the
