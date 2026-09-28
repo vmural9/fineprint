@@ -321,6 +321,247 @@ stripping the headers, the contents and the index out of the chunks; and whether
 chunking closes the gap on `lookup` questions. All three are measured on this same golden set and
 land in the same table, beside these rows.
 
+## Part 2 — retrieval quality
+
+### What was built
+
+Part 1 judged retrieval by one coarse question: was an expected page among the five passages? Part 2
+changes retrieval in two ways, one at a time and then together, and scores every configuration with
+four metrics that read the text itself.
+
+**A chunker that follows the handbook.** Part 1's `fixed-220w` chunker cuts overlapping windows
+of 220 words wherever the count falls, so a window can stop in the middle of a sentence or a table.
+The new `sections` chunker cuts where the handbook itself changes subject, at its headings, and
+keeps every table whole in one chunk. The prose under a heading is packed into chunks of at most 300
+words (`max_words=300`); a paragraph is split only when it is longer than that, and then between
+sentences. The heading rides at the head of its section's first chunk, and every chunk records the
+heading it sits under, such as "Section 1: Signing up for Medicare > How much does Part B coverage
+cost?". The chart comparing Original Medicare with Medicare Advantage on pages 11–12 is a single
+`sections` chunk, where `fixed-220w` spreads it across several windows. Both chunk sets live in the
+database side by side, and `fineprint chunks --page 11 --chunk-set <name>` prints how either one
+cuts a page. How headings and tables are recognised in pypdf's text is written out in the docstring
+of `src/fineprint/chunking.py`.
+
+**A re-ranker.** A re-ranker is a second model that reads the question together with each candidate
+passage and scores how well the passage answers it. That is slower than the two searches that find
+the candidates, so it only reads a shortlist. Here it is Cohere Rerank 3.5 on Amazon Bedrock
+(`cohere.rerank-v3-5:0`), behind the same thin provider interface as the other two models: it
+re-scores the top 20 of the fused list, and the best 5 by its score are kept, in its order. Each
+chunk keeps its fused rank beside its new one, so the results files, and `fineprint search` run with
+`RERANKER_PROVIDER=bedrock`, show what the re-ranker moved. Only hybrid retrieval is re-ranked;
+`vector` and `lexical` exist to measure one retriever alone.
+
+**Four metrics that read the text.** Page hit says whether the right page came back, not whether the
+passage holds the answer or whether the answer keeps to it. Part 2 adds the four RAGAS metrics,
+implemented here from their definitions in the RAGAS paper and documentation, in
+`evals/ragas_metrics.py`, where every prompt and formula is written out. A model reads and plain
+Python counts: the judge is Claude Sonnet 5, a different model from Claude Opus 5, which writes the
+answers, so no answer is graded by its author.
+
+- **Context recall**: did retrieval find what the answer needs? The expected answer is split into
+  sentences, the judge says for each whether the retrieved passages support it, and the score is the
+  supported share.
+- **Context precision**: did retrieval put the useful passages first? The judge marks each passage
+  useful or not for reaching the expected answer, and the score averages, over the ranks *k* that
+  hold a useful passage, the share of useful passages among the first *k*: a useful passage counts
+  for more the higher it sits, and a list with none scores 0.
+- **Faithfulness**: does the answer keep to its passages? The judge lists the answer's factual
+  claims, then checks each one against the passages, and the score is the supported share.
+- **Answer relevance**: does the answer address the question asked? The judge, shown only the
+  answer, writes questions it would answer completely, and the score is the mean cosine similarity
+  of their Titan embeddings to the embedding of the question actually asked. An answer the judge
+  calls noncommittal, one that says the information is not available, scores 0.
+
+The six questions the handbook does not answer are excluded from all four: their expected answer is
+that the handbook does not say, which leaves no facts for recall or precision to find, and an
+abstention makes no claims to check. Excluded means left out of the mean, not scored 0;
+`abstention_accuracy` remains their measure. An answer that makes no factual claim has no
+faithfulness score either. And a judged score is an estimate with its own error, not a count like
+page hit; part 4 will calibrate the judge against hand labels.
+
+**The scoring pass.** Scoring is a second pass over a finished run.
+`python -m evals.score evals/results/<run_id>.json` reads each question's passages from the results
+file, never from the database, whose chunks can be re-ingested after a run. It has the judge score
+every answerable question and writes the four scores into the same file beside the page metrics,
+together with every verdict behind them: each sentence, passage and claim, the judge's yes or no,
+and its one-line reason. The file also records the judge model, the embedding model and a hash of
+the prompts, which ties each score to the prompt text that produced it. `--explain QID` prints the
+working behind one question's four numbers.
+
+**The candidate diagnostic, run before the re-ranker.** A re-ranker can only promote a passage that
+retrieval has already put in front of it. So before any re-ranked run, `python -m evals.candidates`
+took the whole fused list for every answerable question, before the top-5 cut, and recorded where
+the first chunk covering an expected page sat. That turned "a re-ranker should help" into a
+prediction with question ids in it: on `fixed-220w`, four of the hybrid's five misses, `q034`,
+`q035`, `q021` and `q031`, had their page at fused ranks 6 to 20, inside the shortlist the re-ranker
+reads, and the fifth, `q019`, had it at rank 39, out of its reach. The diagnostic's files are in
+`evals/results/candidates/`.
+
+**Six configurations**, defined in `evals/configs.py`: part 1's three under their old names, plus a
+two-by-two of chunk set and re-ranker in hybrid mode, so each change is measured alone and together
+with the other.
+
+| Configuration | Chunk set | Retrieval | Re-ranker |
+|---------------|-----------|-----------|-----------|
+| `hybrid` | `fixed-220w` | hybrid | none |
+| `hybrid+rerank` | `fixed-220w` | hybrid | Cohere Rerank 3.5 |
+| `sections` | `sections` | hybrid | none |
+| `sections+rerank` | `sections` | hybrid | Cohere Rerank 3.5 |
+| `vector-only` | `fixed-220w` | vector | none |
+| `lexical-only` | `fixed-220w` | lexical | none |
+
+**Hypotheses, committed first.** Before any part 2 run I wrote down what I expected each change to
+do, why, and, where I could, which question it should fix, and committed that as
+`evals/HYPOTHESES.md`; the file has not been edited since. Written first, a prediction can fail in
+public. Written after the numbers, almost any result can be explained, and the hypothesis tends to
+be the one that held. The findings below judge each one held, partly held or not held, the three
+verdicts that file fixes.
+
+### Run it end to end
+
+Part 2 runs on part 1's setup and needs two more models enabled in the same Bedrock region:
+`us.anthropic.claude-sonnet-5`, the judge, and `cohere.rerank-v3-5:0`, the re-ranker. As in part 1,
+export `AWS_PROFILE` in the shell you run these commands in; boto3 reads it from the environment,
+not from `.env`.
+
+```bash
+export AWS_PROFILE=your-bedrock-profile          # boto3 reads this from the environment, not .env
+uv run fineprint ingest --chunk-set sections     # the second chunk set, stored beside fixed-220w
+uv run fineprint chunks --page 11 --chunk-set fixed-220w   # one page cut both ways; reads the
+uv run fineprint chunks --page 11 --chunk-set sections     # database and calls no model
+
+uv run python -m evals.candidates --chunk-set fixed-220w --mode hybrid   # where each expected
+uv run python -m evals.candidates --chunk-set sections --mode hybrid     # page sits in the pool
+
+uv run python -m evals.run_golden_set --config hybrid+rerank   # or any name in evals/configs.py
+uv run python -m evals.score evals/results/<run_id>.json       # the judge's pass, into that file
+uv run python -m evals.score evals/results/<run_id>.json --explain q034   # one question's working
+uv run python -m evals.scoreboard                              # regenerate both tables
+```
+
+Every configuration answers all 40 questions with Claude Opus 5, and the scoring pass then makes
+several judge calls per question, plus embedding calls for answer relevance, so neither a run nor a
+scoring pass is free; `evals/README.md` counts the calls. The candidate diagnostic embeds each
+question once and calls no answer model, and `--explain` on a scored question reads the file and
+calls nothing. To watch the re-ranker on one question,
+`RERANKER_PROVIDER=bedrock uv run fineprint search "<question>"` prints each chunk's fused rank
+beside its new one.
+
+### Findings
+
+All six rows come from runs made in part 2. The database had been re-ingested since part 1's runs,
+which gave every chunk a new id, so part 1's three results files point at chunks that no longer
+exist and hold no chunk text for the judge to read; they stay in `evals/results/` as part 1's
+record, and the scoreboard reads the newer run of each configuration. Run again, `hybrid`,
+`vector-only` and `lexical-only` reproduce part 1's retrieval numbers question for question:
+`page_hit@5`, `page_recall@5`, `mrr` and the by-type tables are unchanged. `vector-only` and
+`lexical-only`, which part 1 ran retrieval-only, now carry answers too, so every row has all four
+scores and the answer-side columns. The answers were all written afresh, and the answer figures in
+part 1's section above are the new run's.
+
+**H1 — the `sections` chunker.** Predicted: cutting at headings and keeping tables whole raises
+`page_recall@5` on `table` and `multi_section` questions, leaves `lookup` within one question of the
+baseline, and finds `q031`. **Partly held.** On `table` questions `page_recall@5` rose from 88.9% to
+100.0%, and `q031` was found, both of its pages at once, in the single chunk that holds the whole
+comparison chart on pages 11–12. On `multi_section` questions it did not move, 90.0% on both rows:
+`q025` and `q029` still find one of their two pages. And the largest gain came where none was
+predicted: `lookup` rose from 73.3% to 93.3%, three questions of 15 (`q019`, `q034`, `q035`),
+leaving `q021`, whose page sat at rank 7 of the `sections` pool, just outside the top 5. Each of
+those three pages came in through a section chunk that the vector search ranked first or second and
+that opens with its own heading, "Durable medical equipment (DME)" for the question about a
+wheelchair and "Part D coverage for insulin" for the one about insulin. No run separates the heading
+from the rest of the section, though, so what made those chunks easier to find is not measured. What
+it means: section chunks bring back the right page as often as the re-ranker does, 97.1%
+`page_hit@5` for both, but their passages support less of the expected answers, context recall 0.82
+against 0.92, and on `multi_section` questions less than the plain hybrid's, 0.72 against 0.77. The
+files show one way that happens: a page holds several sections, and the one retrieved is not always
+the one with the answer. On `q001`, the Part B premium question, `sections` put page 23 first, but
+its section on the late enrollment penalty rather than the one that gives the premium, and the
+answer said its passages did not state the figure.
+
+**H2 — the re-ranker.** Predicted: re-ranking the fused candidates fixes the lookups whose expected
+page is already in the pool at ranks 6 to 20, does not move questions whose page is absent from the
+pool, and finds `q034` at rank 5 or better. **Held.** `hybrid+rerank` reaches 97.1% `page_hit@5`, 33
+of 34. The four questions the candidate diagnostic placed inside the re-ranker's shortlist are
+exactly the four it fixed: `q034`, `q035` and `q021`, each now at rank 1, and `q031`, the one
+`table` question among them, at rank 3 with one of its two pages. `q019`, whose page sat at fused
+rank 39, outside the 20 candidates the re-ranker reads, is the one it still misses. A prediction
+written down before the run, naming its questions, landed exactly. It also answers the question
+part 1 left open: fusion did not beat the vector leg alone in part 1, 85.3% against 88.2%, and with
+a re-ranker over the fused candidates it does, 97.1% against 88.2%. The vector leg was never
+re-ranked here, so that is fusion with a re-ranker against plain vector search, not the two on equal
+terms.
+
+**H3 — the two together.** Predicted: `sections+rerank` is the best row on `page_hit@5` and on
+context recall, and its gain is additive to within one question of the two effects measured
+separately. **Partly held.** The first half held: it is the best row on `page_hit@5`, 100.0%, all 34
+answerable questions, and on context recall, 0.94. It is also the best on context precision, 0.90,
+and ties `hybrid+rerank` on faithfulness, 0.97. The second half cannot be judged on this golden set.
+Alone, each change recovered four of the hybrid's five misses, and three of the four are the same
+questions (`q034`, `q035`, `q031`), so the two gains added together come to more than the five
+misses there were; at 34 of 34 the combined row sits at the ceiling and cannot show whether the
+effects add. What the files do show is overlap: together the two changes fixed what either fixed
+alone, `q019`, which only `sections` reached, and `q021`, which only the re-ranker did.
+
+**H4 — faithfulness.** Predicted: faithfulness is above 0.90 on every row, because the answer prompt
+forbids answering outside the passages and every citation is verified; where it is lower, the
+failing claims are figures copied with a different year or unit. **Partly held.** The first half
+held: faithfulness runs from 0.91 on `lexical-only` to 0.97 on both re-ranked rows. The guess about
+the failures was wrong. Read through `--explain`, none of the unsupported claims on any row is a
+figure with the wrong year or unit; they are of two other kinds. Some are true facts from outside
+the passages: on `q021`, about a trip to Portugal and one to Puerto Rico, the hybrid did not
+retrieve page 53, and the answer said anyway that Puerto Rico counts as part of the U.S. for
+Medicare, which page 53 does say but none of its passages did. That is exactly what faithfulness is
+there to catch. Others are the question's own details worked into a rule the passages do give: on
+`q006`, where the asker's mother turns 65 on March 12, the answers turn the handbook's enrollment
+window into "December through June". The call that checks claims is shown the passages and the
+claims but not the question, and on some rows the judge marked that claim unsupported while on
+others it let the same claim through. That second kind is a limit of the metric as built here, not a
+fault in the answers. Together with a few plain misreadings by the judge, it is why this column is
+an estimate that part 4 will check against hand labels.
+
+**H5 — context precision.** Predicted: context precision is higher for `sections` than for
+`fixed-220w` at the same k, because overlapping fixed windows put near-duplicate passages into the
+top 5. **Not held.** Without the re-ranker it is lower, 0.74 for `sections` against 0.78 for
+`hybrid`. With the re-ranker the order turns round by 0.02, 0.90 against 0.88; I still count the
+hypothesis as not held, because the plain pair went against it and the reason it gave is not what
+the judge's verdicts show. The judge is told that a passage repeating a useful fact is still useful,
+so overlapping windows that each carry the answer all count in the fixed rows' favour: on `q030`,
+the hybrid's first three passages are consecutive windows from pages 71–73, and all three are marked
+useful. On the questions where `sections` scores lower, what the judge marked not useful were
+neighbouring sections: for `q001`, page 23's sections on the late enrollment penalty and on paying
+the premium, instead of the one that states it; for `q006`, three sections that touch on enrollment,
+ranked above the one on the Initial Enrollment Period. And the two long tables `sections` keeps
+whole, the comparison chart on pages 11–12 and the enrollment-period table on pages 71–72, sit in
+the top 5 of many questions they are no use for. With the re-ranker choosing the five, both tables
+turn up far less often, and mostly where they help.
+
+**Answer relevance barely separates the rows.** Five of them sit between 0.53 and 0.58, and
+`lexical-only`, at 0.43, is the only one that stands apart. Two things in how the metric is built
+account for that. An answer the judge calls noncommittal scores 0 whatever questions it produced, so
+every abstention it calls noncommittal is a 0 in its row's mean, and `lexical-only`, which misses
+the most pages, also has the lowest `abstention_accuracy`, 72.5%. And the ceiling is not 1.0 in
+practice: the judge writes its questions from the answer alone, worded differently from one another
+and asking only for what the answer gives, while a golden question carries the asker's own situation
+("My mom turns 65 on March 12…"). Only a generated question that nearly copies the real one comes
+close to a similarity of 1, and since an answer's score is the mean over its questions, no answer on
+any row gets near it. So this column ranks the rows only weakly here, and the other three metrics
+carry the comparison; a mean in the middle of the scale reflects how the metric is built, not
+answers that miss the point.
+
+**The movement table counts chunks, page hit counts pages.** The table says `hybrid+rerank` lifted
+10 questions' first expected-page chunk into the top 5, while `page_hit@5` rose by four questions,
+from 29 to 33. *Lifted* is about the chunk the re-ranker put highest for an expected page, which can
+have sat below rank 5 while another chunk of the same page was already in the top 5; `page_hit@5` is
+about the page. Six of the ten are questions of that kind. On `q001`, the hybrid already had page 23
+at rank 1, in a window that stops mid-sentence just before the income limits that raise the premium;
+the re-ranker put first the next window, which fusion had placed at rank 7 and which states them.
+The page was a hit either way, but only the lifted window holds the rest of the answer, the kind of
+gain context recall can see and page hit cannot. `sections+rerank` shows the same pattern: 6 lifted,
+and one question newly hit, `q021`. The table is computed from each run's stored top 5, so it cannot
+see a page the re-ranker pushed out; comparing each re-ranked row with its un-re-ranked twin can,
+and neither re-ranked row lost a page its twin had.
+
 ## The corpus
 
 "Medicare & You" is the handbook the Centers for Medicare & Medicaid Services mails to every
