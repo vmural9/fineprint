@@ -117,7 +117,7 @@ def test_the_request_asks_for_the_schema_as_a_tool_and_sends_no_sampling_paramet
     # Verified live on 2026-09-21: Bedrock rejects `strict` on this path with a 400.
     assert "strict" not in tool
     # One call per reply. Verified live on 2026-09-28: Bedrock accepts the field, and asked for
-    # three calls at once, the model made one.
+    # three calls at once, Claude Sonnet 5 made one.
     assert call["tool_choice"] == {
         "type": "tool",
         "name": TOOL_NAME,
@@ -170,10 +170,11 @@ def test_a_reply_sent_back_gets_a_tool_result_for_every_tool_call_it_holds():
     assert tool_use_ids == ["toolu_1", "toolu_2"]
     assert all(entry["type"] == "tool_result" for entry in tool_results)
     assert all(entry["is_error"] is True for entry in tool_results)
-    # The first call gets the validation error; the other is told only one call is read.
+    # The first call gets the validation error; the other, which failed too, is told so, and
+    # that one call is expected.
     assert "confidence" in tool_results[0]["content"]
-    assert "ignored" in tool_results[1]["content"]
-    assert TOOL_NAME in tool_results[1]["content"]
+    assert "did not fit the schema either" in tool_results[1]["content"]
+    assert f"one call to {TOOL_NAME}" in tool_results[1]["content"]
 
 
 def test_a_later_tool_call_that_validates_is_the_answer_when_an_earlier_one_does_not():
