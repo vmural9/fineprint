@@ -57,13 +57,16 @@ renders as `—`; it never carries a placeholder value.
 
 Golden set: 40 questions · Corpus: Medicare & You, 2026 edition, sha256 `d7a341bc3d2d`
 
-Generated at 2026-09-26 14:23 UTC.
+Generated at 2026-09-28 05:23 UTC.
 
 | Configuration | Page hit@5 | Manual pass | Context recall | Context precision | Faithfulness | Answer relevance | Cost per query | p95 latency | Judge pass | Adversarial pass |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | 85.3% | — | — | — | — | — | — | — | — | — |
-| vector-only | 88.2% | — | — | — | — | — | — | — | — | — |
-| lexical-only | 67.6% | — | — | — | — | — | — | — | — | — |
+| hybrid | 85.3% | — | 0.75 | 0.78 | 0.94 | 0.53 | — | — | — | — |
+| hybrid+rerank | 97.1% | — | 0.92 | 0.88 | 0.97 | 0.56 | — | — | — | — |
+| sections | 97.1% | — | 0.82 | 0.74 | 0.95 | 0.55 | — | — | — | — |
+| sections+rerank | 100.0% | — | 0.94 | 0.90 | 0.97 | 0.58 | — | — | — | — |
+| vector-only | 88.2% | — | 0.86 | 0.87 | 0.94 | 0.56 | — | — | — | — |
+| lexical-only | 67.6% | — | 0.56 | 0.57 | 0.91 | 0.43 | — | — | — | — |
 
 `—` means not measured yet, never a stand-in value. Part 1 fills Page hit@5 and Manual pass; part 2 the four RAGAS columns; part 3 cost per query and p95 latency; part 4 the judge and adversarial columns. The four RAGAS columns are scored by the judge model named in the provenance table and are LLM-judged estimates.
 
@@ -243,11 +246,12 @@ uv run python -m evals.scoreboard --check
 
 ### What the numbers say
 
-Three runs over the same 40 questions and the same pinned PDF, at k = 5, 20 candidates per
-retriever, RRF k = 60, on the naive fixed-size chunker. Retrieval metrics are computed over the
-answerable questions only; an unanswerable question has no expected pages, and what it measures is
-abstention. The results files are in `evals/results/`, and the scoreboard recomputes every
-aggregate from their per-question rows.
+This section compares three of the scoreboard's rows: `hybrid`, `vector-only` and `lexical-only`,
+the three on the naive fixed-size chunker without a re-ranker. They are runs over the same 40
+questions and the same pinned PDF, at k = 5, 20 candidates per retriever, RRF k = 60. Retrieval
+metrics are computed over the answerable questions only; an unanswerable question has no expected
+pages, and what it measures is abstention. The results files are in `evals/results/`, and the
+scoreboard recomputes every aggregate from their per-question rows.
 
 **The hybrid does not win — by one question.** Vector-only retrieval gets 88.2% on Page hit@5; the
 hybrid gets 85.3%. That 2.9-point gap is a single question out of the 34 answerable ones, decided
@@ -288,12 +292,20 @@ than assuming it.
 
 **The answers hold up where retrieval does.** `cited_page_hit` is 85.3% — the same as the hybrid's
 page hit rate, and on the same questions: whenever an expected page was retrieved, the answer cited
-it, and whenever one was not, it did not invent one. `abstention_accuracy` is 90.0%, and all four
-errors run the same way: the service said "the handbook doesn't say" about a question the handbook
-does answer. In every one of the four, retrieval had already failed — three missed the expected
-page outright, and the fourth, `q029`, needed pages 18 and 80 and got only 80, so the model refused
-on exactly the half it had not been shown. Not one of the four is the model discarding evidence it
-was given, and not one produced a confident wrong answer.
+it, and whenever one was not, it did not invent one. `abstention_accuracy` is 87.5%, five errors in
+40, and four of them run the same way: the service said "the handbook doesn't say" about a question
+the handbook does answer. In every one of those four, retrieval had already failed — three missed
+the expected page outright, and the fourth, `q029`, needed pages 18 and 80 and got only 80, so the
+model refused on exactly the half it had not been shown. None of the four is the model discarding
+evidence it was given. The fifth is the one error retrieval does not explain, and it runs the other
+way. `q026` asks exactly how many dollars Dad will owe for a hernia repair in a hospital outpatient
+department, which the handbook does not say. Retrieval had not failed on it: the top two passages
+were the page 47 text that gives the general rule for outpatient costs and points to
+Medicare.gov/procedure-price-lookup. The answer's text says what the golden set's expected answer
+says — no dollar figure for a specific procedure, the general rule, and that price-lookup tool —
+but the model also set `found_in_handbook` to true, with `confidence` high. That flag is what
+`abstention_accuracy` scores, so on this question the service claimed the handbook answers
+something it does not.
 
 **The Manual pass column is empty** because nobody has graded the answers yet: `0 of 40` reviewed,
 as the detail table says. `page_hit@5` measures whether the right page came back, and

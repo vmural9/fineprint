@@ -5,13 +5,16 @@
 
 Golden set: 40 questions · Corpus: Medicare & You, 2026 edition, sha256 `d7a341bc3d2d`
 
-Generated at 2026-09-26 14:23 UTC.
+Generated at 2026-09-28 05:23 UTC.
 
 | Configuration | Page hit@5 | Manual pass | Context recall | Context precision | Faithfulness | Answer relevance | Cost per query | p95 latency | Judge pass | Adversarial pass |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | 85.3% | — | — | — | — | — | — | — | — | — |
-| vector-only | 88.2% | — | — | — | — | — | — | — | — | — |
-| lexical-only | 67.6% | — | — | — | — | — | — | — | — | — |
+| hybrid | 85.3% | — | 0.75 | 0.78 | 0.94 | 0.53 | — | — | — | — |
+| hybrid+rerank | 97.1% | — | 0.92 | 0.88 | 0.97 | 0.56 | — | — | — | — |
+| sections | 97.1% | — | 0.82 | 0.74 | 0.95 | 0.55 | — | — | — | — |
+| sections+rerank | 100.0% | — | 0.94 | 0.90 | 0.97 | 0.58 | — | — | — | — |
+| vector-only | 88.2% | — | 0.86 | 0.87 | 0.94 | 0.56 | — | — | — | — |
+| lexical-only | 67.6% | — | 0.56 | 0.57 | 0.91 | 0.43 | — | — | — | — |
 
 `—` means not measured yet, never a stand-in value. Part 1 fills Page hit@5 and Manual pass; part 2 the four RAGAS columns; part 3 cost per query and p95 latency; part 4 the judge and adversarial columns. The four RAGAS columns are scored by the judge model named in the provenance table and are LLM-judged estimates.
 
@@ -21,9 +24,12 @@ Generated at 2026-09-26 14:23 UTC.
 
 | Configuration | page_recall@5 | mrr | cited_page_hit | abstention_accuracy | Answers reviewed |
 | --- | --- | --- | --- | --- | --- |
-| hybrid | 82.4% | 0.77 | 85.3% | 90.0% | 0 of 40 |
-| vector-only | 88.2% | 0.86 | — | — | — |
-| lexical-only | 63.2% | 0.56 | — | — | — |
+| hybrid | 82.4% | 0.77 | 85.3% | 87.5% | 0 of 40 |
+| hybrid+rerank | 94.1% | 0.89 | 97.1% | 97.5% | 0 of 40 |
+| sections | 94.1% | 0.77 | 97.1% | 95.0% | 0 of 40 |
+| sections+rerank | 98.5% | 0.93 | 100.0% | 100.0% | 0 of 40 |
+| vector-only | 88.2% | 0.86 | 88.2% | 95.0% | 0 of 40 |
+| lexical-only | 63.2% | 0.56 | 67.6% | 72.5% | 0 of 40 |
 
 `page_recall@5` is the share of a question's expected pages that were found, so it is the column that exposes questions whose answer needs two sections.
 
@@ -32,6 +38,9 @@ Generated at 2026-09-26 14:23 UTC.
 | Configuration | lookup | table | multi_section |
 | --- | --- | --- | --- |
 | hybrid | 73.3% (15) | 88.9% (9) | 100.0% (10) |
+| hybrid+rerank | 93.3% (15) | 100.0% (9) | 100.0% (10) |
+| sections | 93.3% (15) | 100.0% (9) | 100.0% (10) |
+| sections+rerank | 100.0% (15) | 100.0% (9) | 100.0% (10) |
 | vector-only | 80.0% (15) | 88.9% (9) | 100.0% (10) |
 | lexical-only | 66.7% (15) | 66.7% (9) | 70.0% (10) |
 
@@ -42,6 +51,9 @@ Each cell is the share of that type's questions whose expected page was retrieve
 | Configuration | lookup | table | multi_section |
 | --- | --- | --- | --- |
 | hybrid | 73.3% (15) | 88.9% (9) | 90.0% (10) |
+| hybrid+rerank | 93.3% (15) | 94.4% (9) | 95.0% (10) |
+| sections | 93.3% (15) | 100.0% (9) | 90.0% (10) |
+| sections+rerank | 100.0% (15) | 100.0% (9) | 95.0% (10) |
 | vector-only | 80.0% (15) | 88.9% (9) | 100.0% (10) |
 | lexical-only | 66.7% (15) | 66.7% (9) | 55.0% (10) |
 
@@ -51,9 +63,12 @@ Each cell is the mean share of that type's questions' expected pages that were f
 
 | Configuration | lookup | table | multi_section |
 | --- | --- | --- | --- |
-| hybrid | — | — | — |
-| vector-only | — | — | — |
-| lexical-only | — | — | — |
+| hybrid | 0.68 (15) | 0.85 (9) | 0.77 (10) |
+| hybrid+rerank | 0.93 (15) | 0.97 (9) | 0.84 (10) |
+| sections | 0.81 (15) | 0.94 (9) | 0.72 (10) |
+| sections+rerank | 0.98 (15) | 0.97 (9) | 0.85 (10) |
+| vector-only | 0.79 (15) | 0.88 (9) | 0.95 (10) |
+| lexical-only | 0.58 (15) | 0.71 (9) | 0.38 (10) |
 
 Each cell is the mean share of the expected answer's sentences the retrieved passages supported, for that type's questions a scoring pass has scored, with that count in brackets.
 
@@ -61,16 +76,31 @@ Each cell is the mean share of the expected answer's sentences the retrieved pas
 
 | Configuration | lookup | table | multi_section |
 | --- | --- | --- | --- |
-| hybrid | — | — | — |
-| vector-only | — | — | — |
-| lexical-only | — | — | — |
+| hybrid | 0.90 (15) | 0.97 (9) | 0.98 (10) |
+| hybrid+rerank | 0.99 (15) | 0.94 (9) | 0.98 (10) |
+| sections | 0.93 (15) | 0.97 (9) | 0.95 (10) |
+| sections+rerank | 0.95 (15) | 1.00 (9) | 0.98 (10) |
+| vector-only | 0.96 (15) | 0.92 (9) | 0.94 (10) |
+| lexical-only | 0.92 (14) | 0.90 (9) | 0.93 (9) |
 
 Each cell is the mean share of the generated answer's own claims the retrieved passages supported, for that type's questions with at least one claim to check, with that count in brackets.
+
+### Re-ranker movement
+
+| Configuration | Lifted into the top 5 | Already in the top 5 | No expected page in the top 5 | Answerable questions |
+| --- | --- | --- | --- | --- |
+| hybrid+rerank | 10 | 23 | 1 | 34 |
+| sections+rerank | 6 | 28 | 0 | 34 |
+
+Only rows with a re-ranker are in this table. For each answerable question it takes the first stored chunk covering an expected page or one of its `alt_pages` alternates: `fused_rank` > 5 means that chunk sat outside the top 5 before re-ranking and re-ranking lifted it in; `fused_rank` ≤ 5 means it was already there. A page the re-ranker pushed *out* of the top 5 cannot be seen from the stored top 5, so it never appears here — that loss is what a lower `page_hit@5` on this row than on its un-re-ranked twin (`hybrid` or `sections`) shows.
 
 ### What produced each row
 
 | Configuration | Mode | Chunk set | k | Candidates | RRF k | Reranker | Embedding model | Answer model | Judge model | Commit | Run |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | hybrid | fixed-220w | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | — | b049a28 (dirty) | 20260921T012044Z_hybrid |
-| vector-only | vector | fixed-220w | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | — | — | b049a28 (dirty) | 20260921T011428Z_vector-only |
-| lexical-only | lexical | fixed-220w | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | — | — | b049a28 | 20260921T011412Z_lexical-only |
+| hybrid | hybrid | fixed-220w | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | us.anthropic.claude-sonnet-5 | 26561f9 (dirty) | 20260926T150426Z_hybrid |
+| hybrid+rerank | hybrid | fixed-220w | 5 | 20 | 60 | cohere.rerank-v3-5:0 | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | us.anthropic.claude-sonnet-5 | d59a1bc (dirty) | 20260928T041004Z_hybrid+rerank |
+| sections | hybrid | sections | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | us.anthropic.claude-sonnet-5 | d59a1bc (dirty) | 20260928T041711Z_sections |
+| sections+rerank | hybrid | sections | 5 | 20 | 60 | cohere.rerank-v3-5:0 | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | us.anthropic.claude-sonnet-5 | d59a1bc (dirty) | 20260928T042438Z_sections+rerank |
+| vector-only | vector | fixed-220w | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | us.anthropic.claude-sonnet-5 | d59a1bc (dirty) | 20260928T043127Z_vector-only |
+| lexical-only | lexical | fixed-220w | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | us.anthropic.claude-sonnet-5 | d59a1bc (dirty) | 20260928T043706Z_lexical-only |
