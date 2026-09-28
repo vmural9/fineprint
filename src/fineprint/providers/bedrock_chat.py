@@ -3,7 +3,8 @@
 Free text would let the model invent a page number or a dollar amount and leave the service
 no way to tell. So the model is given one tool whose input schema is the Pydantic model the
 caller asked for, and its answer is the tool's arguments, which Pydantic then validates. A
-draft that does not validate is sent back once with the validation error attached.
+draft that does not validate is sent back once with the validation error attached. A reply can
+hold several calls to the tool at once; the first that validates is the answer.
 
 Why tool use and not the API's own structured output, and why these exact request fields,
 was settled by live probes against Bedrock in us-west-2 on 2026-09-21:
@@ -122,29 +123,16 @@ class BedrockChatModel:
             # Why the answer stopped comes before what the answer says: a refused or
             # truncated response still carries content, and it must not be trusted.
             self._check_stop_reason(response)
-            call = self._tool_call(response)
+            calls = self._tool_calls(response)
 
             try:
-                parsed = schema.model_validate(call.input)
+                parsed = self._first_valid(calls, schema)
             except ValidationError as error:
                 failure = error
                 messages = [
                     messages[0],
                     {"role": "assistant", "content": response.content},
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "tool_result",
-                                "tool_use_id": call.id,
-                                "is_error": True,
-                                "content": (
-                                    f"That did not fit the schema. Fix these problems and call "
-                                    f"{TOOL_NAME} again:\n{error}"
-                                ),
-                            }
-                        ],
-                    },
+                    {"role": "user", "content": self._tool_results(response, calls[0], error)},
                 ]
                 continue
 
@@ -172,13 +160,66 @@ class BedrockChatModel:
                 "Send fewer excerpts or raise max_tokens."
             )
 
-    def _tool_call(self, response: Any) -> Any:
-        """The `tool_use` block holding the answer, or a clear error about what came instead."""
-        for block in response.content:
-            if block.type == "tool_use" and block.name == TOOL_NAME:
-                return block
+    def _tool_calls(self, response: Any) -> list[Any]:
+        """The `tool_use` blocks calling the answer tool, in order, or a clear error if none came.
+
+        Usually there is one. The model can also make several calls at once, each carrying a
+        whole answer of its own.
+        """
+        calls = [
+            block
+            for block in response.content
+            if block.type == "tool_use" and block.name == TOOL_NAME
+        ]
+        if calls:
+            return calls
         blocks = [block.type for block in response.content] or ["nothing"]
         raise NoToolCallError(
             f"{self.model} did not call {TOOL_NAME}: it stopped with "
             f"stop_reason={response.stop_reason!r} and returned {', '.join(blocks)}."
         )
+
+    def _first_valid[T: BaseModel](self, calls: list[Any], schema: type[T]) -> T:
+        """Parse the first call whose input fits `schema`, or raise the first call's error.
+
+        A call that validates is kept even when an earlier call in the same reply did not:
+        sending the reply back would cost a second request for an answer already in hand.
+        """
+        errors: list[ValidationError] = []
+        for call in calls:
+            try:
+                return schema.model_validate(call.input)
+            except ValidationError as error:
+                errors.append(error)
+        raise errors[0]
+
+    def _tool_results(
+        self, response: Any, failed: Any, error: ValidationError
+    ) -> list[dict[str, Any]]:
+        """A `tool_result` for each `tool_use` block in `response`, to go in the retry turn.
+
+        The API refuses that turn with a 400, "tool_use ids were found without tool_result
+        blocks", if any `tool_use` block in the reply before it goes unanswered. The call that
+        failed validation gets its error back; every other call is told it was ignored, since
+        one call is expected.
+        """
+        results = []
+        for block in response.content:
+            if block.type != "tool_use":
+                continue
+            if block.id == failed.id:
+                content = (
+                    f"That did not fit the schema. Fix these problems and call "
+                    f"{TOOL_NAME} again:\n{error}"
+                )
+            else:
+                content = f"Only one call to {TOOL_NAME} is expected, so this one was ignored."
+            results.append(
+                {
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "is_error": True,
+                    "content": content,
+                }
+            )
+        return results
