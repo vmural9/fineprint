@@ -18,8 +18,10 @@ was settled by live probes against Bedrock in us-west-2, on 2026-09-21 unless da
 - the bare model id `anthropic.claude-opus-5` is refused ("on-demand throughput isn't
   supported"); the `us.` inference profile is what works.
 - `temperature` and the other sampling parameters are refused by this model, so none is sent.
-- `"disable_parallel_tool_use": True` in that tool_choice -> works, `stop_reason="tool_use"`
-  (2026-09-28, `us.anthropic.claude-sonnet-5`): asked for three calls at once, it made one.
+- `"disable_parallel_tool_use": True` in that tool_choice, on `us.anthropic.claude-sonnet-5`
+  (2026-09-28) -> works: asked for three calls at once, it made one, `stop_reason="tool_use"`.
+- the same on `us.anthropic.claude-opus-5` (2026-09-28) -> works: the live test in
+  `tests/test_live_bedrock.py` passes with it.
 """
 
 import time
@@ -118,7 +120,8 @@ class BedrockChatModel:
                 tools=[tool],
                 # Forced, so the model cannot answer in prose. Accepted on this model even
                 # though it thinks by default; probed on 2026-09-21. One call per reply, since
-                # a retry turn has to answer every call the reply made; probed on 2026-09-28.
+                # a retry turn has to answer every call the reply made; accepted by Claude
+                # Sonnet 5 and Claude Opus 5 on 2026-09-28.
                 tool_choice={"type": "tool", "name": TOOL_NAME, "disable_parallel_tool_use": True},
             )
             input_tokens += response.usage.input_tokens
@@ -203,9 +206,9 @@ class BedrockChatModel:
         """A `tool_result` for each `tool_use` block in `response`, to go in the retry turn.
 
         The API refuses that turn with a 400, "tool_use ids were found without tool_result
-        blocks", if any `tool_use` block in the reply before it goes unanswered. The call that
-        failed validation gets its error back; every other call is told it was ignored, since
-        one call is expected.
+        blocks", if any `tool_use` block in the reply before it goes unanswered. The first call
+        gets its validation error back. The others failed validation too, since a reply is sent
+        back only when no call fits, and each is told so and that one call is expected.
         """
         results = []
         for block in response.content:
@@ -217,7 +220,10 @@ class BedrockChatModel:
                     f"{TOOL_NAME} again:\n{error}"
                 )
             else:
-                content = f"Only one call to {TOOL_NAME} is expected, so this one was ignored."
+                content = (
+                    f"This did not fit the schema either, and only one call to {TOOL_NAME} "
+                    "is expected."
+                )
             results.append(
                 {
                     "type": "tool_result",
