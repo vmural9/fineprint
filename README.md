@@ -23,23 +23,25 @@ code that produced them.
 
 ## Status
 
-**Part 1 is built and merged.** Ingestion, hybrid retrieval, cited answers, the HTTP service, the
-`fineprint` command, a golden set of 40 audited questions, and the eval tooling that produced the
-scoreboard below are all on `main`. Three retrieval configurations have been run against the real
-corpus and their results files are committed.
+**Parts 1 and 2 are built and merged.** Part 1 built the service — ingestion, hybrid retrieval,
+cited answers, the HTTP API and the `fineprint` command — with a golden set of 40 audited questions
+and the eval tooling. Part 2 added a structure-aware chunker, a re-ranker and the four RAGAS
+metrics, and ran six configurations over the golden set, each with answers and judge scores; their
+results files are committed, and every row of the scoreboard below comes from them. The part 2
+write-up, which judges the hypotheses committed before those runs against the numbers, is under
+[Part 2](#part-2--retrieval-quality).
 
-One thing part 1 still owes: I have not yet graded the `hybrid` answers with
-`python -m evals.review`, so the scoreboard's **Manual pass** column is empty. Until that is done
-there is no `part-1` tag.
-
-Part 2 has not started.
+Part 1 still owes two things: I have not yet graded the `hybrid` answers with
+`python -m evals.review`, so the scoreboard's **Manual pass** column is empty, and its walkthrough
+video is not yet linked here. Until both are done there is no `part-1` tag. Part 2's walkthrough
+video is not recorded yet, and there is no `part-2` tag either.
 
 ## The series
 
 | Part | What it adds | Status |
 |------|--------------|--------|
 | 1. RAG service | Ingestion into Postgres with pgvector, hybrid retrieval with reciprocal rank fusion, FastAPI `/ask` and `/search`, structured answers with cited pages, golden set v1, the first scoreboard | built; manual review outstanding |
-| 2. Retrieval quality | RAGAS metrics on the golden set; fixed-size chunking against structure-aware chunking against a cross-encoder re-ranker, side by side | planned |
+| 2. Retrieval quality | The four RAGAS metrics on the golden set, implemented from their definitions with Claude Sonnet 5 as judge; fixed-size against structure-aware chunking, each with and without a Cohere Rerank 3.5 re-ranker on Bedrock, side by side; hypotheses committed before the runs | built; video outstanding |
 | 3. Observability and agent | Langfuse tracing on every LLM and tool call; a two-tool agent over the retriever; provider retries, timeouts and fallback; cost and p95 latency | planned |
 | 4. Eval gate | Calibrated LLM-as-judge rubric, an adversarial slice, deterministic tool-call assertions, promptfoo in GitHub Actions with pass/fail thresholds | planned |
 | 5. Online evaluation (optional) | Scoring on sampled live traffic with alerts on score drops | planned |
@@ -259,8 +261,8 @@ by a tie-break, so it is a worked example of how fusion can hurt rather than evi
 usually does. The secondary metrics point the same way with a little more behind them:
 `page_recall@5` is 88.2% for vector-only against 82.4% for the hybrid — three expected pages out of
 45, across three questions — and `mrr` is 0.86 against 0.77. On this golden set, at this size,
-fusion did not earn its place; whether that survives a bigger set is part 2's job, not a conclusion
-part 1 is entitled to.
+fusion did not earn its place; whether that would survive a bigger set is not a conclusion part 1
+is entitled to.
 
 Here is the mechanism behind that one question. RRF scores a chunk by its position in each list it
 appears in and adds those scores up, so a chunk both retrievers returned outranks a chunk only one
@@ -287,8 +289,8 @@ questions, 88.9% on the 9 `table` questions, and 73.3% on the 15 `lookup` questi
 shows the same shape: 100.0%, 88.9%, 80.0%. The likely reason is that a lookup is short and
 specific and often phrased in the reader's words rather than the handbook's — "will Medicare buy
 him a wheelchair" against a passage headed "durable medical equipment" — while a multi-section
-question is long enough to overlap the handbook's vocabulary somewhere. Part 2 measures that rather
-than assuming it.
+question is long enough to overlap the handbook's vocabulary somewhere. Part 2 measures what
+chunking and re-ranking do to lookups; it does not test this explanation directly.
 
 **The answers hold up where retrieval does.** `cited_page_hit` is 85.3% — the same as the hybrid's
 page hit rate, and on the same questions: whenever an expected page was retrieved, the answer cited
@@ -314,12 +316,13 @@ that page is *correct*. That judgement is the reviewer's, it is recorded with
 `python -m evals.review`, and part 4 reuses those same labels to calibrate its LLM judge rather
 than creating new ones.
 
-**What part 2 does with this.** Three measured openings: whether fusion can be made to earn its
-place (weighting the legs, or a cross-encoder re-ranker over the fused candidates, instead of
-trusting agreement); whether the lexical leg improves more from a real BM25 extension or from
-stripping the headers, the contents and the index out of the chunks; and whether structure-aware
-chunking closes the gap on `lookup` questions. All three are measured on this same golden set and
-land in the same table, beside these rows.
+**What part 2 did with this.** Part 1 left three openings: whether fusion can be made to earn its
+place (weighting the legs, or a re-ranker over the fused candidates, instead of trusting
+agreement); whether the lexical leg improves more from a real BM25 extension or from stripping the
+headers, the contents and the index out of the chunks; and whether structure-aware chunking closes
+the gap on `lookup` questions. Part 2 measured the first with a re-ranker and the third with the
+`sections` chunker, on this same golden set and in the same table, beside these rows; its findings
+are [below](#findings). The second was not part of part 2, and the lexical leg is unchanged.
 
 ## Part 2 — retrieval quality
 
@@ -589,8 +592,10 @@ verifying the hash before it writes anything into place.
 ```
 src/fineprint/                the service: config, db, schema.sql, pdf, chunking, providers,
                               ingest, retrieval, answer, api, cli
-evals/                        golden set, metrics, runner, review tool, scoreboard generator
+evals/                        golden set, configurations, metrics, runner, review tool, scoring
+                              pass, candidate diagnostic, scoreboard generator, HYPOTHESES.md
 evals/results/                one JSON file per eval run; the scoreboard reads these
+evals/results/candidates/     the candidate diagnostic's files, kept apart from the runs
 scripts/download_handbook.py  pinned, hash-verified handbook download
 tests/
 docker-compose.yml  pyproject.toml  .env.example
