@@ -355,11 +355,13 @@ chunk keeps its fused rank beside its new one, so the results files, and `finepr
 `vector` and `lexical` exist to measure one retriever alone.
 
 **Four metrics that read the text.** Page hit says whether the right page came back, not whether the
-passage holds the answer or whether the answer keeps to it. Part 2 adds the four RAGAS metrics,
-implemented here from their definitions in the RAGAS paper and documentation, in
-`evals/ragas_metrics.py`, where every prompt and formula is written out. A model reads and plain
-Python counts: the judge is Claude Sonnet 5, a different model from Claude Opus 5, which writes the
-answers, so no answer is graded by its author.
+passage holds the answer or whether the answer keeps to it. Part 2 adds the four RAGAS metrics.
+RAGAS, short for Retrieval Augmented Generation Assessment, is a published framework for scoring a
+RAG system's retrieval and its answers with a language model as the judge; the four are implemented
+here from their definitions in the RAGAS paper and documentation, in `evals/ragas_metrics.py`, where
+every prompt and formula is written out. A model reads and plain Python counts: the judge is
+Claude Sonnet 5, a different model from Claude Opus 5, which writes the answers, so no answer is
+graded by its author.
 
 - **Context recall**: did retrieval find what the answer needs? The expected answer is split into
   sentences, the judge says for each whether the retrieved passages support it, and the score is the
@@ -452,15 +454,17 @@ beside its new one.
 
 ### Findings
 
-All six rows come from runs made in part 2. The database had been re-ingested since part 1's runs,
-which gave every chunk a new id, so part 1's three results files point at chunks that no longer
-exist and hold no chunk text for the judge to read; they stay in `evals/results/` as part 1's
-record, and the scoreboard reads the newer run of each configuration. Run again, `hybrid`,
-`vector-only` and `lexical-only` reproduce part 1's retrieval numbers question for question:
-`page_hit@5`, `page_recall@5`, `mrr` and the by-type tables are unchanged. `vector-only` and
-`lexical-only`, which part 1 ran retrieval-only, now carry answers too, so every row has all four
-scores and the answer-side columns. The answers were all written afresh, and the answer figures in
-part 1's section above are the new run's.
+Every aggregate below is quoted from the scoreboard or is a count that follows from one, and every
+per-question rank or verdict comes from the results files in `evals/results/` or the candidate files
+in `evals/results/candidates/`, so anyone can check them. All six rows come from runs made in
+part 2. The database had been re-ingested since part 1's runs, which gave every chunk a new id, so
+part 1's three results files point at chunks that no longer exist and hold no chunk text for the
+judge to read; they stay in `evals/results/` as part 1's record, and the scoreboard reads the newer
+run of each configuration. Run again, `hybrid`, `vector-only` and `lexical-only` reproduce part 1's
+retrieval numbers question for question: `page_hit@5`, `page_recall@5`, `mrr` and the by-type tables
+are unchanged. `vector-only` and `lexical-only`, which part 1 ran retrieval-only, now carry answers
+too, so every row has all four scores and the answer-side columns. The answers were all written
+afresh, and the answer figures in part 1's section above are the new run's.
 
 **H1 — the `sections` chunker.** Predicted: cutting at headings and keeping tables whole raises
 `page_recall@5` on `table` and `multi_section` questions, leaves `lookup` within one question of the
@@ -489,11 +493,11 @@ of 34. The four questions the candidate diagnostic placed inside the re-ranker's
 exactly the four it fixed: `q034`, `q035` and `q021`, each now at rank 1, and `q031`, the one
 `table` question among them, at rank 3 with one of its two pages. `q019`, whose page sat at fused
 rank 39, outside the 20 candidates the re-ranker reads, is the one it still misses. A prediction
-written down before the run, naming its questions, landed exactly. It also answers the question
-part 1 left open: fusion did not beat the vector leg alone in part 1, 85.3% against 88.2%, and with
-a re-ranker over the fused candidates it does, 97.1% against 88.2%. The vector leg was never
-re-ranked here, so that is fusion with a re-ranker against plain vector search, not the two on equal
-terms.
+written down before the run, naming its questions, landed exactly. It bears on the question part 1
+left open without settling it. Fusion did not beat the vector leg alone in part 1, 85.3% against
+88.2%, and fusion followed by the re-ranker does, 97.1% against 88.2%; but the vector leg was never
+re-ranked here, so this compares fusion with a re-ranker to plain vector search, not the two
+retrievers on equal terms.
 
 **H3 — the two together.** Predicted: `sections+rerank` is the best row on `page_hit@5` and on
 context recall, and its gain is additive to within one question of the two effects measured
