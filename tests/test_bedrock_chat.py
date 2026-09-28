@@ -140,6 +140,54 @@ def test_an_invalid_tool_call_is_retried_once_with_the_validation_error():
     assert "confidence" in tool_result["content"]
 
 
+def test_a_reply_sent_back_gets_a_tool_result_for_every_tool_call_it_holds():
+    # A reply can hold several calls to the tool at once. Neither of these two validates, so the
+    # reply is sent back, and the API refuses that turn with a 400 unless every tool_use id in
+    # the replayed reply has a tool_result after it.
+    first = message(
+        blocks=[
+            tool_call(INVALID_INPUT, block_id="toolu_1"),
+            tool_call(INVALID_INPUT, block_id="toolu_2"),
+        ]
+    )
+    second = message(blocks=[tool_call(VALID_INPUT, block_id="toolu_3")])
+    chat, client = chat_model(first, second)
+
+    result = chat.complete_structured("system rules", "the excerpts", DraftAnswer)
+
+    assert result.parsed.confidence == "high"
+    retry_messages = client.messages.calls[1]["messages"]
+    assert retry_messages[1]["content"] == first.content
+    tool_use_ids = [block.id for block in retry_messages[1]["content"] if block.type == "tool_use"]
+    tool_results = retry_messages[2]["content"]
+    assert [entry["tool_use_id"] for entry in tool_results] == tool_use_ids
+    assert tool_use_ids == ["toolu_1", "toolu_2"]
+    assert all(entry["type"] == "tool_result" for entry in tool_results)
+    assert all(entry["is_error"] is True for entry in tool_results)
+    # The first call gets the validation error; the other is told only one call is read.
+    assert "confidence" in tool_results[0]["content"]
+    assert "ignored" in tool_results[1]["content"]
+    assert TOOL_NAME in tool_results[1]["content"]
+
+
+def test_a_later_tool_call_that_validates_is_the_answer_when_an_earlier_one_does_not():
+    first = message(
+        blocks=[
+            tool_call(INVALID_INPUT, block_id="toolu_1"),
+            tool_call(VALID_INPUT, block_id="toolu_2"),
+        ]
+    )
+    # Asked for only if the valid call above were thrown away.
+    unused = message(blocks=[tool_call(VALID_INPUT | {"confidence": "low"}, block_id="toolu_3")])
+    chat, client = chat_model(first, unused)
+
+    result = chat.complete_structured("system rules", "the excerpts", DraftAnswer)
+
+    assert result.parsed.confidence == "high"
+    assert len(client.messages.calls) == 1
+    assert (result.input_tokens, result.output_tokens) == (860, 170)
+
+
 def test_a_tool_call_that_is_invalid_twice_raises_with_the_validation_error():
     chat, client = chat_model(
         message(blocks=[tool_call(INVALID_INPUT)]),
