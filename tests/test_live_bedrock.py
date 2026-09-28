@@ -63,7 +63,7 @@ def test_claude_opus_5_answers_one_excerpt_as_a_validated_draft_answer(settings:
         "with a short verbatim quote from that chunk."
     )
     user = (
-        '<chunk id="7" pages="18-18">In 2026, you pay a standard monthly Part B premium of '
+        '<chunk id="7" pages="23-23">In 2026, you pay a standard monthly Part B premium of '
         "$202.90. Some people pay more based on income.</chunk>\n\n"
         "Question: What is the standard Part B premium in 2026?"
     )
