@@ -116,7 +116,13 @@ def test_the_request_asks_for_the_schema_as_a_tool_and_sends_no_sampling_paramet
     assert tool["input_schema"] == DraftAnswer.model_json_schema()
     # Verified live on 2026-09-21: Bedrock rejects `strict` on this path with a 400.
     assert "strict" not in tool
-    assert call["tool_choice"] == {"type": "tool", "name": TOOL_NAME}
+    # One call per reply. Verified live on 2026-09-28: Bedrock accepts the field, and asked for
+    # three calls at once, the model made one.
+    assert call["tool_choice"] == {
+        "type": "tool",
+        "name": TOOL_NAME,
+        "disable_parallel_tool_use": True,
+    }
     # Claude Opus 5 returns 400 for temperature and every other sampling parameter.
     assert not {"temperature", "top_p", "top_k"} & set(call)
 
