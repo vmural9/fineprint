@@ -3,11 +3,12 @@
 Free text would let the model invent a page number or a dollar amount and leave the service
 no way to tell. So the model is given one tool whose input schema is the Pydantic model the
 caller asked for, and its answer is the tool's arguments, which Pydantic then validates. A
-draft that does not validate is sent back once with the validation error attached. A reply can
-hold several calls to the tool at once; the first that validates is the answer.
+draft that does not validate is sent back once with the validation error attached. The request
+asks for a single call; should a reply hold several anyway, the first that validates is the
+answer.
 
 Why tool use and not the API's own structured output, and why these exact request fields,
-was settled by live probes against Bedrock in us-west-2 on 2026-09-21:
+was settled by live probes against Bedrock in us-west-2, on 2026-09-21 unless dated otherwise:
 
 - `client.messages.parse(..., output_format=...)` -> 400 `output_config.format: Extra inputs
   are not permitted`.
@@ -17,6 +18,8 @@ was settled by live probes against Bedrock in us-west-2 on 2026-09-21:
 - the bare model id `anthropic.claude-opus-5` is refused ("on-demand throughput isn't
   supported"); the `us.` inference profile is what works.
 - `temperature` and the other sampling parameters are refused by this model, so none is sent.
+- `"disable_parallel_tool_use": True` in that tool_choice -> works, `stop_reason="tool_use"`
+  (2026-09-28, `us.anthropic.claude-sonnet-5`): asked for three calls at once, it made one.
 """
 
 import time
@@ -114,8 +117,9 @@ class BedrockChatModel:
                 messages=messages,
                 tools=[tool],
                 # Forced, so the model cannot answer in prose. Accepted on this model even
-                # though it thinks by default; probed on 2026-09-21.
-                tool_choice={"type": "tool", "name": TOOL_NAME},
+                # though it thinks by default; probed on 2026-09-21. One call per reply, since
+                # a retry turn has to answer every call the reply made; probed on 2026-09-28.
+                tool_choice={"type": "tool", "name": TOOL_NAME, "disable_parallel_tool_use": True},
             )
             input_tokens += response.usage.input_tokens
             output_tokens += response.usage.output_tokens
@@ -163,8 +167,8 @@ class BedrockChatModel:
     def _tool_calls(self, response: Any) -> list[Any]:
         """The `tool_use` blocks calling the answer tool, in order, or a clear error if none came.
 
-        Usually there is one. The model can also make several calls at once, each carrying a
-        whole answer of its own.
+        The request asks for one, but a reply holding several calls at once, each carrying a
+        whole answer of its own, is still handled.
         """
         calls = [
             block
