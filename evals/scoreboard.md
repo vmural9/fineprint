@@ -5,7 +5,7 @@
 
 Golden set: 40 questions · Corpus: Medicare & You, 2026 edition, sha256 `d7a341bc3d2d`
 
-Generated at 2026-09-28 05:23 UTC.
+Generated at 2026-09-28 06:05 UTC.
 
 | Configuration | Page hit@5 | Manual pass | Context recall | Context precision | Faithfulness | Answer relevance | Cost per query | p95 latency | Judge pass | Adversarial pass |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -92,7 +92,7 @@ Each cell is the mean share of the generated answer's own claims the retrieved p
 | hybrid+rerank | 10 | 23 | 1 | 34 |
 | sections+rerank | 6 | 28 | 0 | 34 |
 
-Only rows with a re-ranker are in this table. For each answerable question it takes the first stored chunk covering an expected page or one of its `alt_pages` alternates: `fused_rank` > 5 means that chunk sat outside the top 5 before re-ranking and re-ranking lifted it in; `fused_rank` ≤ 5 means it was already there. A page the re-ranker pushed *out* of the top 5 cannot be seen from the stored top 5, so it never appears here — that loss is what a lower `page_hit@5` on this row than on its un-re-ranked twin (`hybrid` or `sections`) shows.
+Only rows with a re-ranker are in this table. It is computed from the top 5 each run stored, checked against the golden set as it stands now, `alt_pages` included. For each answerable question it takes the first stored chunk covering an expected page or one of its `alt_pages` alternates: `fused_rank` > 5 means that chunk sat outside the top 5 before re-ranking and re-ranking lifted it in; `fused_rank` ≤ 5 means it was already there. *Lifted* counts that chunk, not its page: another chunk of the same page may already have been in the top 5 before re-ranking, so this column can be larger than the number of questions whose page the re-ranker newly brought into the top 5, which is what the rise in `page_hit@5` over the row's un-re-ranked twin (`hybrid` or `sections`) shows. A page the re-ranker pushed *out* of the top 5 cannot be seen from the stored top 5, so it never appears here — that loss is what a lower `page_hit@5` on this row than on its twin shows.
 
 ### What produced each row
 
