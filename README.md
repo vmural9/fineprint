@@ -31,17 +31,16 @@ results files are committed, and every row of the scoreboard below comes from th
 write-up, which judges the hypotheses committed before those runs against the numbers, is under
 [Part 2](#part-2--retrieval-quality).
 
-Part 1 still owes two things: I have not yet graded the `hybrid` answers with
-`python -m evals.review`, so the scoreboard's **Manual pass** column is empty, and its walkthrough
-video is not yet linked here. Until both are done there is no `part-1` tag. Part 2's walkthrough
-video is not recorded yet, and there is no `part-2` tag either.
+The `hybrid` answers are graded: I reviewed all 40 with `python -m evals.review`, and the
+scoreboard's **Manual pass** column comes from those verdicts. Neither walkthrough video is linked
+here yet, and until each one is, there is no `part-1` or `part-2` tag.
 
 ## The series
 
 | Part | What it adds | Status |
 |------|--------------|--------|
-| 1. RAG service | Ingestion into Postgres with pgvector, hybrid retrieval with reciprocal rank fusion, FastAPI `/ask` and `/search`, structured answers with cited pages, golden set v1, the first scoreboard | built; manual review outstanding |
-| 2. Retrieval quality | The four RAGAS metrics on the golden set, implemented from their definitions with Claude Sonnet 5 as judge; fixed-size against structure-aware chunking, each with and without a Cohere Rerank 3.5 re-ranker on Bedrock, side by side; hypotheses committed before the runs | built; video outstanding |
+| 1. RAG service | Ingestion into Postgres with pgvector, hybrid retrieval with reciprocal rank fusion, FastAPI `/ask` and `/search`, structured answers with cited pages, golden set v1, the first scoreboard | built; video link outstanding |
+| 2. Retrieval quality | The four RAGAS metrics on the golden set, implemented from their definitions with Claude Sonnet 5 as judge; fixed-size against structure-aware chunking, each with and without a Cohere Rerank 3.5 re-ranker on Bedrock, side by side; hypotheses committed before the runs | built; video link outstanding |
 | 3. Observability and agent | Langfuse tracing on every LLM and tool call; a two-tool agent over the retriever; provider retries, timeouts and fallback; cost and p95 latency | planned |
 | 4. Eval gate | Calibrated LLM-as-judge rubric, an adversarial slice, deterministic tool-call assertions, promptfoo in GitHub Actions with pass/fail thresholds | planned |
 | 5. Online evaluation (optional) | Scoring on sampled live traffic with alerts on score drops | planned |
@@ -309,12 +308,13 @@ but the model also set `found_in_handbook` to true, with `confidence` high. That
 `abstention_accuracy` scores, so on this question the service claimed the handbook answers
 something it does not.
 
-**The Manual pass column is empty** because nobody has graded the answers yet: `0 of 40` reviewed,
-as the detail table says. `page_hit@5` measures whether the right page came back, and
-`cited_page_hit` whether the answer pointed at it; neither can say whether the sentence built from
-that page is *correct*. That judgement is the reviewer's, it is recorded with
-`python -m evals.review`, and part 4 reuses those same labels to calibrate its LLM judge rather
-than creating new ones.
+**Manual pass is the one hand-made number.** `page_hit@5` measures whether the right page came
+back, and `cited_page_hit` whether the answer pointed at it; neither can say whether the sentence
+built from that page is *correct*. That judgement is the reviewer's: I graded all 40 `hybrid`
+answers with `python -m evals.review`, judging each written answer as a reader would, and the
+scoreboard's 85.0% comes from those verdicts. Each failing answer is a retrieval miss or a half
+answer, and the note stored with its verdict says which. Part 4 reuses these same labels to
+calibrate its LLM judge rather than creating new ones.
 
 **What part 2 did with this.** Part 1 left three openings: whether fusion can be made to earn its
 place (weighting the legs, or a re-ranker over the fused candidates, instead of trusting
