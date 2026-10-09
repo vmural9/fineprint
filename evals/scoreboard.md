@@ -5,11 +5,11 @@
 
 Golden set: 40 questions · Corpus: Medicare & You, 2026 edition, sha256 `d7a341bc3d2d`
 
-Generated at 2026-09-28 06:05 UTC.
+Generated at 2026-10-09 23:29 UTC.
 
 | Configuration | Page hit@5 | Manual pass | Context recall | Context precision | Faithfulness | Answer relevance | Cost per query | p95 latency | Judge pass | Adversarial pass |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | 85.3% | — | 0.75 | 0.78 | 0.94 | 0.53 | — | — | — | — |
+| hybrid | 85.3% | 85.0% (40 reviewed) | 0.75 | 0.78 | 0.94 | 0.53 | — | — | — | — |
 | hybrid+rerank | 97.1% | — | 0.92 | 0.88 | 0.97 | 0.56 | — | — | — | — |
 | sections | 97.1% | — | 0.82 | 0.74 | 0.95 | 0.55 | — | — | — | — |
 | sections+rerank | 100.0% | — | 0.94 | 0.90 | 0.97 | 0.58 | — | — | — | — |
@@ -24,7 +24,7 @@ Generated at 2026-09-28 06:05 UTC.
 
 | Configuration | page_recall@5 | mrr | cited_page_hit | abstention_accuracy | Answers reviewed |
 | --- | --- | --- | --- | --- | --- |
-| hybrid | 82.4% | 0.77 | 85.3% | 87.5% | 0 of 40 |
+| hybrid | 82.4% | 0.77 | 85.3% | 87.5% | 40 of 40 |
 | hybrid+rerank | 94.1% | 0.89 | 97.1% | 97.5% | 0 of 40 |
 | sections | 94.1% | 0.77 | 97.1% | 95.0% | 0 of 40 |
 | sections+rerank | 98.5% | 0.93 | 100.0% | 100.0% | 0 of 40 |

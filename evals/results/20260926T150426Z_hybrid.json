@@ -182,10 +182,10 @@
         "latency_ms": 9826.652437999655
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Premium and IRMAA mechanism right; adds the late-enrollment penalty (page 23). Omits the IRMAA income thresholds.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:33Z"
       },
       "error": null,
       "scoring_detail": {
@@ -532,10 +532,10 @@
         "latency_ms": 11014.483798000583
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "All required figures: $1,736 deductible once, $217 a day for SNF days 21-30, $3,906 total.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:33Z"
       },
       "error": null,
       "scoring_detail": {
@@ -866,10 +866,10 @@
         "latency_ms": 7978.58047400041
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Says the 2026 limits are not in the handbook, prints the 2025 ones, points to Medicare.gov and SSA.gov/extrahelp.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:33Z"
       },
       "error": null,
       "scoring_detail": {
@@ -1032,10 +1032,10 @@
         "latency_ms": 7805.813584000134
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "No to aids and fitting exams; covered diagnostic exams and audiologist visit with 20% and deductible, as on page 42.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:33Z"
       },
       "error": null,
       "scoring_detail": {
@@ -1349,10 +1349,10 @@
         "latency_ms": 8331.324257000233
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Medicare pays first under 20 employees; multi-employer exception stated.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:33Z"
       },
       "error": null,
       "scoring_detail": {
@@ -1630,10 +1630,10 @@
         "latency_ms": 9217.760811001426
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "December through June; coverage start rules match page 17.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:33Z"
       },
       "error": null,
       "scoring_detail": {
@@ -1924,10 +1924,10 @@
         "latency_ms": 9434.195277999606
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "8-month Special Enrollment Period; COBRA does not extend it; the 3-month start-date delay is on page 17.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:33Z"
       },
       "error": null,
       "scoring_detail": {
@@ -2220,10 +2220,10 @@
         "latency_ms": 6609.272768000665
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "July; first-of-month rule and 6-month retroactive Part A explained.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:33Z"
       },
       "error": null,
       "scoring_detail": {
@@ -2507,10 +2507,10 @@
         "latency_ms": 8305.480519000412
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "No cap under Original Medicare without supplemental coverage; Medicare Advantage yearly limit; no dollar amount given.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:33Z"
       },
       "error": null,
       "scoring_detail": {
@@ -2818,10 +2818,10 @@
         "latency_ms": 9266.046583999923
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Part B premium still due; plan premium on top; Part B premium reduction noted; Part D IRMAA thresholds match page 82.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:33Z"
       },
       "error": null,
       "scoring_detail": {
@@ -3135,10 +3135,10 @@
         "latency_ms": 8328.960128999825
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "$2,100 cap in 2026, what counts toward it, covered drugs only.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:33Z"
       },
       "error": null,
       "scoring_detail": {
@@ -3430,10 +3430,10 @@
         "latency_ms": 7227.660022999771
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Handbook does not list drugs; points to the plan's formulary, Medicare.gov/plan-compare, 1-800-MEDICARE, SHIP.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:33Z"
       },
       "error": null,
       "scoring_detail": {
@@ -3597,10 +3597,10 @@
         "latency_ms": 11163.49731199989
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "fail",
+        "note": "Penalty yes, permanent, Extra Help exempts: right. The question also asks how it is worked out, and the 1% x $38.99 x months formula (page 84) is missing.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:33Z"
       },
       "error": null,
       "scoring_detail": {
@@ -3920,10 +3920,10 @@
         "latency_ms": 8619.917746000283
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Plan K $8,000 and Plan L $4,000 limits, 50%/75% shares, exclusions, $283 Part B deductible: matches page 76.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:33Z"
       },
       "error": null,
       "scoring_detail": {
@@ -4286,10 +4286,10 @@
         "latency_ms": 9150.73675199892
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "6-month Medigap Open Enrollment Period, consequences of waiting, guaranteed issue rights, Part B delay rule.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:33Z"
       },
       "error": null,
       "scoring_detail": {
@@ -4603,10 +4603,10 @@
         "latency_ms": 9450.843308999538
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Not yet; costs right; the no-prior-Welcome-visit point is on page 55. Does not mention he can have the Welcome to Medicare visit now.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:33Z"
       },
       "error": null,
       "scoring_detail": {
@@ -4920,10 +4920,10 @@
         "latency_ms": 10316.984387000048
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Nothing for home health; 20% on equipment; homebound defined; hour limits match page 43.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:33Z"
       },
       "error": null,
       "scoring_detail": {
@@ -5317,10 +5317,10 @@
         "latency_ms": 9509.314601998994
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Certification by hospice doctor and own doctor; signed statement; $5 drugs, 5% respite, room and board rule.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:33Z"
       },
       "error": null,
       "scoring_detail": {
@@ -5633,10 +5633,10 @@
         "latency_ms": 8350.24735800107
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "fail",
+        "note": "Abstained: page 40 was not retrieved, so no rent-versus-buy answer and no 13-month rule.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:33Z"
       },
       "error": null,
       "scoring_detail": {
@@ -5926,10 +5926,10 @@
         "latency_ms": 8174.708024000211
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Coverage, providers and 20% after the deductible right. Omits the per-day coinsurance in a hospital outpatient setting.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:34Z"
       },
       "error": null,
       "scoring_detail": {
@@ -6308,10 +6308,10 @@
         "latency_ms": 7536.44060499937
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Puerto Rico covered, Portugal generally not: both right. Omits the limited exceptions; the Puerto Rico fact is on page 53, which was not among the passages.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:34Z"
       },
       "error": null,
       "scoring_detail": {
@@ -6623,10 +6623,10 @@
         "latency_ms": 12264.820591000898
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Observation is outpatient; 3-day inpatient rule; MOON; ACO and Medicare Advantage exceptions; appeal rights on page 28.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:34Z"
       },
       "error": null,
       "scoring_detail": {
@@ -6963,10 +6963,10 @@
         "latency_ms": 7060.996863001492
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "$434 days 61-90, $868 days 91-150 with 60 lifetime reserve days, all costs after day 150.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:34Z"
       },
       "error": null,
       "scoring_detail": {
@@ -7276,10 +7276,10 @@
         "latency_ms": 11182.120777999444
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "$311 or $565, Part B required with bought Part A, 10% penalty for twice the years; eligibility caveat is fair.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:34Z"
       },
       "error": null,
       "scoring_detail": {
@@ -7611,10 +7611,10 @@
         "latency_ms": 16647.883984000146
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Medicare Savings Programs plus Extra Help, and the automatic link between them. Omits the four program names and what each covers (page 91 not retrieved).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:34Z"
       },
       "error": null,
       "scoring_detail": {
@@ -8058,10 +8058,10 @@
         "latency_ms": 8477.956172999257
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Text is correct: no figure for a procedure, the general outpatient rule, the price-lookup tool. The model's found_in_handbook flag is wrong.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:34Z"
       },
       "error": null,
       "scoring_detail": {
@@ -8231,10 +8231,10 @@
         "latency_ms": 9004.884231000688
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Open Enrollment with a January 1 start, plus the Medicare Advantage Open Enrollment Period and the 5-star period (page 72). Omits the October 15 start date.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:34Z"
       },
       "error": null,
       "scoring_detail": {
@@ -8516,10 +8516,10 @@
         "latency_ms": 5934.382938999988
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "General Enrollment Period, 2 months to join a plan, coverage the first of the next month, both parts required.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:34Z"
       },
       "error": null,
       "scoring_detail": {
@@ -8829,10 +8829,10 @@
         "latency_ms": 11404.501369999707
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "fail",
+        "note": "Abstained on the disaster Special Enrollment Period (page 18 not retrieved); the general windows it gives are right but do not answer the question.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:34Z"
       },
       "error": null,
       "scoring_detail": {
@@ -9135,10 +9135,10 @@
         "latency_ms": 10852.998088999811
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Medicare Advantage Open Enrollment Period, one change, options match page 72; the first-3-months rule is on page 71.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:34Z"
       },
       "error": null,
       "scoring_detail": {
@@ -9431,10 +9431,10 @@
         "latency_ms": 7370.560989998921
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "fail",
+        "note": "Only the Original Medicare half answered; the Medicare Advantage referral and prior authorization rules (pages 11-12) were not retrieved.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:34Z"
       },
       "error": null,
       "scoring_detail": {
@@ -9709,10 +9709,10 @@
         "latency_ms": 10451.64449100048
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "HMO and PPO rules match pages 66-68, including HMOPOS and out-of-network costs.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:34Z"
       },
       "error": null,
       "scoring_detail": {
@@ -10009,10 +10009,10 @@
         "latency_ms": 6501.177068999823
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Premium not in the handbook; how plan premiums work; points to the plan, Medicare.gov, 1-800-MEDICARE, SHIP.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:34Z"
       },
       "error": null,
       "scoring_detail": {
@@ -10147,10 +10147,10 @@
         "latency_ms": 6584.551226000258
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "fail",
+        "note": "Abstained: the Part D IRMAA passage (page 82) was not retrieved.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:34Z"
       },
       "error": null,
       "scoring_detail": {
@@ -10383,10 +10383,10 @@
         "latency_ms": 7093.841641999461
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "fail",
+        "note": "$35 cap right; the question also asks about the deductible, and the no-deductible rule for insulin (page 88) is missing.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:34Z"
       },
       "error": null,
       "scoring_detail": {
@@ -10659,10 +10659,10 @@
         "latency_ms": 9013.67433699852
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Exception request to the plan and coverage determination right. Omits the prescriber's statement and the fast-request option (page 100 not retrieved).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:34Z"
       },
       "error": null,
       "scoring_detail": {
@@ -10942,10 +10942,10 @@
         "latency_ms": 7120.316562999506
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "No maximum in the handbook; deductible explained; points to plan-compare and 1-800-MEDICARE.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:34Z"
       },
       "error": null,
       "scoring_detail": {
@@ -11108,10 +11108,10 @@
         "latency_ms": 9098.290803000054
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Plan N $20 and $50 copayments; high-deductible G $2,950; Plan G excess-charge coverage matches the chart.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:34Z"
       },
       "error": null,
       "scoring_detail": {
@@ -11440,10 +11440,10 @@
         "latency_ms": 13408.509702998344
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Trial right 12 months, state-law fallback, no automatic cancellation, no Medigap for Medicare Advantage costs. Drops the year from \"new to Medicare on or after January 1, 2020\".",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:34Z"
       },
       "error": null,
       "scoring_detail": {
@@ -11753,10 +11753,10 @@
         "latency_ms": 7315.887551998458
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Premium not in the handbook; variation by company and age; points to Medicare.gov/medigap-supplemental-insurance-plans, SHIP, State Insurance Department.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-09T23:29:34Z"
       },
       "error": null,
       "scoring_detail": {
