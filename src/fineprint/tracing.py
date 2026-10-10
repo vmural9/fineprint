@@ -512,11 +512,15 @@ class TracedChatModel:
         *,
         name: str = "answer",
         prices: Mapping[str, Price] = PRICES,
+        fallback: bool = False,
     ) -> None:
         self._inner = inner
         self._tracer = tracer
         self._name = name
         self._prices = prices
+        # True for the model that answers when the first one is down: every span it records is
+        # then marked as a fallback call, because the model itself cannot know it is one.
+        self._fallback = fallback
         self.model = getattr(inner, "model", None)
 
     def complete_structured[T: BaseModel](
@@ -541,7 +545,7 @@ class TracedChatModel:
                     result.output_tokens,
                     prices=self._prices,
                 ),
-                fallback=result.fallback_used,
+                fallback=self._fallback or result.fallback_used,
             )
             return result
 
@@ -577,6 +581,7 @@ class TracedChatModel:
                     turn.output_tokens,
                     prices=self._prices,
                 ),
+                fallback=self._fallback,
             )
             return turn
 
@@ -594,7 +599,13 @@ class TracedChatModel:
             cost = _price_or_none(
                 generation_cost, self.model, input_tokens, output_tokens, prices=self._prices
             )
-        span.end(error=error, input_tokens=input_tokens, output_tokens=output_tokens, cost=cost)
+        span.end(
+            error=error,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost=cost,
+            fallback=self._fallback,
+        )
 
 
 class TracedEmbedder:

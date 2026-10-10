@@ -441,7 +441,8 @@ def test_the_service_builds_one_tracer_and_shuts_it_down(monkeypatch, tmp_path):
     with TestClient(app):
         tracer = app.state.tracer
         assert app.state.retriever.tracer is tracer
-        assert app.state.chat._tracer is tracer
+        assert app.state.chat.primary._tracer is tracer
+        assert app.state.chat.fallback._tracer is tracer
         assert sink.shutdowns == 0
 
     assert sink.shutdowns == 1
