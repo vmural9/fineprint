@@ -339,6 +339,20 @@ def test_an_as_of_before_the_birth_date_is_refused():
         check_enrollment_window(date(2000, 1, 2), date(2000, 1, 1))
 
 
+@pytest.mark.parametrize(
+    ("birth_date", "as_of"),
+    [
+        (date(9935, 1, 1), date(9999, 1, 1)),  # the 65th birthday is past the year 9999
+        (date(9934, 11, 15), date(9999, 1, 1)),  # the window's end is
+        (date(9900, 6, 15), date(9999, 12, 31)),  # the next General Enrollment Period is
+    ],
+    ids=["65th birthday", "window end", "later periods"],
+)
+def test_a_date_past_the_calendars_end_is_a_tool_error_not_a_crash(birth_date, as_of):
+    with pytest.raises(ToolError, match="after the year 9999"):
+        check_enrollment_window(birth_date, as_of)
+
+
 @pytest.mark.corpus
 @pytest.mark.parametrize(("page", "quote"), RULE_QUOTES)
 def test_every_rule_sentence_quoted_is_on_its_page(page: int, quote: str):

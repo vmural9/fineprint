@@ -345,6 +345,24 @@ def _later_periods(as_of: date) -> dict[str, Any]:
 def check_enrollment_window(birth_date: date, as_of: date) -> dict[str, Any]:
     """Every enrollment window that matters on `as_of` for someone born on `birth_date`.
 
+    See `_check_enrollment_window`. A date the check would have to work out past December 31,
+    9999, which Python's dates cannot hold, is a `ToolError` the model can read, not a crash.
+    """
+    try:
+        return _check_enrollment_window(birth_date, as_of)
+    except ToolError:
+        raise
+    except (ValueError, OverflowError) as error:
+        raise ToolError(
+            f"The dates worked out from the birth date {birth_date.isoformat()} and the "
+            f"reference date {as_of.isoformat()} fall after the year 9999, which this tool "
+            "cannot handle. Check the birth date."
+        ) from error
+
+
+def _check_enrollment_window(birth_date: date, as_of: date) -> dict[str, Any]:
+    """Every enrollment window that matters on `as_of` for someone born on `birth_date`.
+
     Returns the Initial Enrollment Period and whether `as_of` is before, inside or after it; the
     coverage start for a sign-up on `as_of` inside it; once it has passed, the General, Open and
     Medicare Advantage Open Enrollment Periods that contain `as_of` or come next (before then, a

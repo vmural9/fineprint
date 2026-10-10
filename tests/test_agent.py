@@ -347,6 +347,21 @@ def test_a_tool_error_goes_back_to_the_model_marked_as_an_error():
     assert record.pages == [] and record.source_text is None
 
 
+def test_a_birth_date_too_late_for_the_calendar_reaches_the_model_as_a_tool_error():
+    far_future = ToolCall(
+        id="toolu_far",
+        name="check_enrollment_window",
+        arguments={"birth_date": "9935-01-01", "as_of": "9999-01-01"},
+    )
+    chat = ScriptedToolModel([[far_future], [record_answer(VALID_ANSWER)]])
+
+    response = ask(chat)
+
+    result = tool_results(chat.calls[1].messages[-1])["toolu_far"]
+    assert result["is_error"] is True
+    assert "after the year 9999" in response.tool_calls[0].error
+
+
 def test_an_answer_made_beside_other_tool_calls_waits_for_their_results():
     chat = ScriptedToolModel(
         [
