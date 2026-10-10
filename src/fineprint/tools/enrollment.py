@@ -134,6 +134,11 @@ RULE_QUOTES: tuple[tuple[int, str], ...] = (
 
 SOURCE_TEXT = "\n".join(f"Page {page}: {quote}" for page, quote in RULE_QUOTES)
 
+LATER_PERIODS_NOTE = (
+    "The General Enrollment, Open Enrollment and Medicare Advantage Open Enrollment Periods "
+    "apply once the Initial Enrollment Period has passed."
+)
+
 LEAP_DAY_MESSAGE = (
     "The handbook does not say when someone born on February 29 turns 65 for Medicare, so their "
     "Initial Enrollment Period cannot be worked out from it; call Social Security or "
@@ -301,14 +306,50 @@ def _describe(window: Window) -> dict[str, Any]:
     }
 
 
+def _later_periods(as_of: date) -> dict[str, Any]:
+    """The General, Open and Medicare Advantage Open Enrollment Periods containing or after `as_of`.
+
+    Only asked for once the Initial Enrollment Period has passed, so a sign-up in the General
+    Enrollment Period is one by someone who missed their Initial Enrollment Period.
+    """
+    general = _yearly_window_from(as_of, general_enrollment_period)
+    open_enrollment = _yearly_window_from(as_of, open_enrollment_period)
+    advantage = _yearly_window_from(as_of, medicare_advantage_open_enrollment)
+    return {
+        "general_enrollment_period": {
+            **_describe(general),
+            "contains_as_of": general.contains(as_of),
+            "coverage_start_if_signed_up_on_as_of": (
+                _first_of_next_month(as_of).isoformat() if general.contains(as_of) else None
+            ),
+        },
+        "open_enrollment_period": {
+            **_describe(open_enrollment),
+            "contains_as_of": open_enrollment.contains(as_of),
+            "coverage_start_if_signed_up_on_as_of": (
+                date(open_enrollment.ends.year + 1, 1, 1).isoformat()
+                if open_enrollment.contains(as_of)
+                else None
+            ),
+        },
+        "medicare_advantage_open_enrollment_period": {
+            **_describe(advantage),
+            "contains_as_of": advantage.contains(as_of),
+            "change_effective_if_plan_gets_request_on_as_of": (
+                _first_of_next_month(as_of).isoformat() if advantage.contains(as_of) else None
+            ),
+        },
+    }
+
+
 def check_enrollment_window(birth_date: date, as_of: date) -> dict[str, Any]:
     """Every enrollment window that matters on `as_of` for someone born on `birth_date`.
 
     Returns the Initial Enrollment Period and whether `as_of` is before, inside or after it; the
-    coverage start for a sign-up on `as_of` inside it; the General, Open and Medicare Advantage
-    Open Enrollment Periods that contain `as_of` or come next; and the pages, with every date in
-    ISO form. Raises `ToolError` when `as_of` is before the birth date or the birth date is
-    February 29.
+    coverage start for a sign-up on `as_of` inside it; once it has passed, the General, Open and
+    Medicare Advantage Open Enrollment Periods that contain `as_of` or come next (before then, a
+    one-line `later_periods` note instead); and the pages, with every date in ISO form. Raises
+    `ToolError` when `as_of` is before the birth date or the birth date is February 29.
     """
     if as_of < birth_date:
         raise ToolError(
@@ -325,42 +366,17 @@ def check_enrollment_window(birth_date: date, as_of: date) -> dict[str, Any]:
         position = "inside"
     coverage, rule = _iep_coverage(birth_date, as_of)
 
-    general = _yearly_window_from(as_of, general_enrollment_period)
-    general_coverage = None
-    if position == "after" and general.contains(as_of):
-        general_coverage = _first_of_next_month(as_of).isoformat()
-
-    open_enrollment = _yearly_window_from(as_of, open_enrollment_period)
-    open_coverage = None
-    if open_enrollment.contains(as_of):
-        open_coverage = date(open_enrollment.ends.year + 1, 1, 1).isoformat()
-
-    advantage = _yearly_window_from(as_of, medicare_advantage_open_enrollment)
-    advantage_effective = None
-    if advantage.contains(as_of):
-        advantage_effective = _first_of_next_month(as_of).isoformat()
-
-    return {
+    result: dict[str, Any] = {
         "birth_date": birth_date.isoformat(),
         "as_of": as_of.isoformat(),
         "turns_65_on": birthday.isoformat(),
         "initial_enrollment_period": {**_describe(iep), "as_of_is": position},
         "coverage_start_if_signed_up_on_as_of": coverage.isoformat() if coverage else None,
         "coverage_start_rule": rule,
-        "general_enrollment_period": {
-            **_describe(general),
-            "contains_as_of": general.contains(as_of),
-            "coverage_start_if_signed_up_on_as_of": general_coverage,
-        },
-        "open_enrollment_period": {
-            **_describe(open_enrollment),
-            "contains_as_of": open_enrollment.contains(as_of),
-            "coverage_start_if_signed_up_on_as_of": open_coverage,
-        },
-        "medicare_advantage_open_enrollment_period": {
-            **_describe(advantage),
-            "contains_as_of": advantage.contains(as_of),
-            "change_effective_if_plan_gets_request_on_as_of": advantage_effective,
-        },
         "pages": list(ENROLLMENT_PAGES),
     }
+    if position == "after":
+        result.update(_later_periods(as_of))
+    else:
+        result["later_periods"] = LATER_PERIODS_NOTE
+    return result

@@ -182,6 +182,23 @@ def test_the_check_reports_the_coverage_start_for_a_signup_on_as_of():
     assert "first 3 months" in result["coverage_start_rule"]
 
 
+def test_a_december_1_birthday_crosses_the_year_end_and_leaves_november_uncovered():
+    """Turning 65 on 2026-12-01: August 2026 to February 2027, and November is the 4th month."""
+    born = date(1961, 12, 1)
+    window = initial_enrollment_period(born)
+
+    assert (window.starts, window.ends) == (date(2026, 8, 1), date(2027, 2, 28))
+    assert part_b_coverage_start(born, date(2026, 10, 31)) == date(2026, 11, 1)
+    assert part_b_coverage_start(born, date(2026, 11, 1)) is None
+    assert part_b_coverage_start(born, date(2026, 11, 30)) is None
+    assert part_b_coverage_start(born, date(2026, 12, 1)) == date(2027, 1, 1)
+    assert part_b_coverage_start(born, date(2027, 2, 28)) == date(2027, 3, 1)
+    assert (
+        check_enrollment_window(born, date(2026, 11, 15))["coverage_start_if_signed_up_on_as_of"]
+        is None
+    )
+
+
 def test_the_check_says_when_page_17_gives_no_coverage_start():
     result = check_enrollment_window(JUNE_1, date(2026, 5, 15))
 
@@ -263,11 +280,37 @@ def test_inside_open_enrollment_coverage_starts_on_january_1():
 def test_a_general_enrollment_signup_after_a_missed_window_starts_coverage_the_month_after():
     """Page 18: only someone whose Initial Enrollment Period has passed uses this period."""
     missed = check_enrollment_window(JUNE_2, date(2027, 2, 10))["general_enrollment_period"]
-    still_in_iep = check_enrollment_window(date(1962, 3, 12), date(2027, 2, 10))
 
     assert missed["coverage_start_if_signed_up_on_as_of"] == "2027-03-01"
-    assert still_in_iep["initial_enrollment_period"]["as_of_is"] == "inside"
-    assert still_in_iep["general_enrollment_period"]["coverage_start_if_signed_up_on_as_of"] is None
+
+
+LATER = (
+    "general_enrollment_period",
+    "open_enrollment_period",
+    "medicare_advantage_open_enrollment_period",
+)
+
+
+@pytest.mark.parametrize(
+    ("as_of", "position"),
+    [(date(2025, 11, 30), "before"), (date(2026, 1, 15), "inside"), (date(2026, 6, 30), "inside")],
+)
+def test_before_or_inside_the_window_the_later_periods_are_only_named(as_of: date, position: str):
+    """Someone not yet on Medicare is not told about plan changes they cannot make."""
+    result = check_enrollment_window(MARCH_12, as_of)
+
+    assert result["initial_enrollment_period"]["as_of_is"] == position
+    assert not any(key in result for key in LATER)
+    assert "once the Initial Enrollment Period has passed" in result["later_periods"]
+
+
+def test_the_day_after_the_window_the_later_periods_are_reported():
+    result = check_enrollment_window(MARCH_12, date(2026, 7, 1))
+
+    assert "later_periods" not in result
+    assert result["general_enrollment_period"]["starts"] == "2027-01-01"
+    assert result["open_enrollment_period"]["starts"] == "2026-10-15"
+    assert result["medicare_advantage_open_enrollment_period"]["starts"] == "2027-01-01"
 
 
 # The whole check
