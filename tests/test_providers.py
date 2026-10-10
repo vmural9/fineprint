@@ -50,7 +50,9 @@ def test_get_embedder_builds_the_bedrock_embedder_from_settings():
 
 
 def test_get_chat_model_builds_the_bedrock_chat_model_from_settings():
-    settings = Settings(llm_provider="bedrock", llm_model="us.anthropic.claude-opus-5")
+    settings = Settings(
+        llm_provider="bedrock", llm_model="us.anthropic.claude-opus-5", fallback_llm_model=""
+    )
 
     chat = get_chat_model(settings)
 
@@ -65,6 +67,7 @@ def test_the_factory_passes_the_timeout_and_retry_settings_into_the_constructors
         aws_timeout_seconds=7,
         aws_max_attempts=3,
         reranker_provider="bedrock",
+        fallback_llm_model="",
     )
 
     chat = get_chat_model(settings)

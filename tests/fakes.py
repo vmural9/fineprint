@@ -10,6 +10,8 @@ of the real models:
 - `ScriptedChatModel` hands back canned objects in order, from a separate queue for each schema,
   for code that asks a model several different things, or asks the same thing twice.
 - `FakeReranker` puts passages in order of how many of the query's words each one contains.
+- `FlakyChatModel` follows a script with one entry per call, each either an exception to raise
+  or a response to return, for code that has to cope with a model that fails and then recovers.
 - `RecordingSink` is a tracing sink that keeps every trace and observation it is handed, with
   the updates made to each, so a test can read back what was traced without Langfuse.
 
@@ -28,7 +30,7 @@ from typing import Any, NamedTuple
 
 from pydantic import BaseModel
 
-from fineprint.providers.base import EmbeddingResult, LLMResult, RerankResult
+from fineprint.providers.base import EmbeddingResult, LLMResult, RerankResult, ToolTurn
 
 
 class FakeEmbedder:
@@ -142,6 +144,66 @@ class ScriptedChatModel:
             output_tokens=self.output_tokens,
             latency_ms=12.5,
         )
+
+
+class FlakyChatModel:
+    """A chat model that follows a script, one entry per call, whichever method is called.
+
+    Each entry is an exception to raise or a response to return: a pydantic object for
+    `complete_structured`, a `ToolTurn` for `complete_with_tools`. `FlakyChatModel([error,
+    answer])` fails the first call and answers the second, which is how a test shows a model
+    going down and coming back. A call with nothing left in the script fails the test.
+    """
+
+    model = "flaky-chat-model"
+
+    def __init__(
+        self,
+        script: Sequence[BaseException | BaseModel | ToolTurn],
+        *,
+        input_tokens: int = 900,
+        output_tokens: int = 120,
+    ):
+        self.script = list(script)
+        self.input_tokens = input_tokens
+        self.output_tokens = output_tokens
+        self.calls: list[str] = []  # the method called each time
+
+    def _next(self, method: str) -> BaseModel | ToolTurn:
+        self.calls.append(method)
+        if not self.script:
+            raise AssertionError(f"FlakyChatModel was called ({method}) with its script used up")
+        entry = self.script.pop(0)
+        if isinstance(entry, BaseException):
+            raise entry
+        return entry
+
+    def complete_structured[T: BaseModel](
+        self, system: str, user: str, schema: type[T]
+    ) -> LLMResult[T]:
+        entry = self._next("complete_structured")
+        if not isinstance(entry, schema):
+            raise TypeError(f"the script holds a {type(entry).__name__} for a {schema.__name__}")
+        return LLMResult(
+            parsed=entry,
+            model=self.model,
+            input_tokens=self.input_tokens,
+            output_tokens=self.output_tokens,
+            latency_ms=12.5,
+        )
+
+    def complete_with_tools(
+        self,
+        system: str,
+        messages: list[dict[str, Any]],
+        tools: Sequence[Any],
+        *,
+        force_tool: str | None = None,
+    ) -> ToolTurn:
+        entry = self._next("complete_with_tools")
+        if not isinstance(entry, ToolTurn):
+            raise TypeError(f"the script holds a {type(entry).__name__} for a tool call")
+        return entry
 
 
 def _words(text: str) -> set[str]:

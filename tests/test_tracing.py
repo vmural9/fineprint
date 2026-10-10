@@ -660,7 +660,7 @@ def test_get_tracer_with_langfuse_builds_a_sink_from_the_three_values(monkeypatc
 
 
 def test_the_builders_wrap_in_the_traced_classes_only_when_given_a_tracer(monkeypatch):
-    settings = Settings(reranker_provider="bedrock", _env_file=None)
+    settings = Settings(reranker_provider="bedrock", fallback_llm_model="", _env_file=None)
     tracer = Tracer()
 
     plain = (
