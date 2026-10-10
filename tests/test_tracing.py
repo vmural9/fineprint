@@ -352,7 +352,7 @@ def test_a_tool_turn_from_the_fallback_is_flagged_on_its_span(tracer: Tracer, si
 def test_a_tool_turn_is_one_generation_span_with_the_calls_as_output(
     tracer: Tracer, sink: RecordingSink
 ):
-    chat = TracedChatModel(ScriptedTools(), tracer, name="turn 1", prices=PRICES)
+    chat = TracedChatModel(ScriptedTools(), tracer, prices=PRICES)
     tools = [ToolSpec(name="record_answer", description="Record.", input_schema={})]
     messages = [{"role": "user", "content": QUESTION}]
 
@@ -361,7 +361,8 @@ def test_a_tool_turn_is_one_generation_span_with_the_calls_as_output(
 
     assert turn.input_tokens == 500
     (generation,) = sink.observations
-    assert (generation.kind, generation.name) == ("generation", "turn 1")
+    # "turn", not the "answer" a structured call is named, so an agent's trace tells them apart.
+    assert (generation.kind, generation.name) == ("generation", "turn")
     assert generation.input[0] == {"role": "system", "content": "system"}
     assert generation.input[1:] == messages
     assert generation.fields["output"] == [{"name": "record_answer", "arguments": {"answer": "x"}}]

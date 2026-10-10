@@ -497,11 +497,17 @@ def _jsonable(value: Any) -> Any:
     return value.model_dump(mode="json") if isinstance(value, BaseModel) else value
 
 
+# The name of the span a tool-calling turn records, so an agent's trace reads turn, tool, turn
+# rather than calling every turn an answer.
+TOOL_TURN_NAME = "turn"
+
+
 class TracedChatModel:
     """Wraps a chat model so each call is one "generation" span, priced from its tokens.
 
-    Works for both ways of calling a model: `complete_structured` for the answer and
-    `complete_with_tools` for the agent's turns. The span's input is the prompt the model saw,
+    Works for both ways of calling a model: `complete_structured` for the answer, in a span
+    called `name`, and `complete_with_tools` for the agent's turns, each in a span called
+    "turn". The span's input is the prompt the model saw,
     as a list of messages, so the Langfuse UI shows it as a conversation.
     """
 
@@ -561,7 +567,7 @@ class TracedChatModel:
             self._inner.complete_with_tools
         )  # an inner model without it fails here, as it would bare
         shown = [{"role": "system", "content": system}, *messages]
-        with self._tracer.span("generation", self._name, input=shown, model=self.model) as span:
+        with self._tracer.span("generation", TOOL_TURN_NAME, input=shown, model=self.model) as span:
             try:
                 turn = call(system, messages, tools, force_tool=force_tool)
             except Exception as error:

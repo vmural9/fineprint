@@ -400,10 +400,10 @@ def test_the_loop_is_an_agent_span_holding_a_generation_per_turn_and_a_span_per_
     (agent,) = root.children
     assert (agent.kind, agent.name) == ("agent", "tools")
     assert [(child.kind, child.name) for child in agent.children] == [
-        ("generation", "answer"),
+        ("generation", "turn"),
         ("tool", "lookup_cost_figure"),
         ("tool", "check_enrollment_window"),
-        ("generation", "answer"),
+        ("generation", "turn"),
     ]
     lookup = agent.children[1]
     assert lookup.input == {"figure": "part_a_coinsurance_days_61_90"}
