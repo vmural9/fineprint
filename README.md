@@ -459,17 +459,21 @@ beside its new one.
 
 ### Findings
 
-Every aggregate below is quoted from the scoreboard or is a count that follows from one, and every
-per-question rank or verdict comes from the results files in `evals/results/` or the candidate files
-in `evals/results/candidates/`, so anyone can check them. All six rows come from runs made in
-part 2. The database had been re-ingested since part 1's runs, which gave every chunk a new id, so
-part 1's three results files point at chunks that no longer exist and hold no chunk text for the
-judge to read; they stay in `evals/results/` as part 1's record, and the scoreboard reads the newer
-run of each configuration. Run again, `hybrid`, `vector-only` and `lexical-only` reproduce part 1's
-retrieval numbers question for question: `page_hit@5`, `page_recall@5`, `mrr` and the by-type tables
-are unchanged. `vector-only` and `lexical-only`, which part 1 ran retrieval-only, now carry answers
-too, so every row has all four scores and the answer-side columns. The answers were all written
-afresh, and the answer figures in part 1's section above are the new run's.
+Every aggregate below is quoted from the scoreboard generated from part 2's runs, or is a count that
+follows from one, and every per-question rank or verdict comes from the results files in
+`evals/results/` or the candidate files in `evals/results/candidates/`, so anyone can check them.
+The scoreboard shows each configuration's latest run, so the `sections` and `sections+rerank`
+figures here belong to their part 2 runs, `20260928T041711Z_sections` and
+`20260928T042438Z_sections+rerank`: a later run of either configuration changes its scoreboard row,
+not these findings. All six configurations were run in part 2. The database had been re-ingested
+since part 1's runs, which gave every chunk a new id, so part 1's three results files point at
+chunks that no longer exist and hold no chunk text for the judge to read; they stay in
+`evals/results/` as part 1's record, and the scoreboard reads the newer run of each configuration.
+Run again, `hybrid`, `vector-only` and `lexical-only` reproduce part 1's retrieval numbers question
+for question: `page_hit@5`, `page_recall@5`, `mrr` and the by-type tables are unchanged.
+`vector-only` and `lexical-only`, which part 1 ran retrieval-only, now carry answers too, so every
+row has all four scores and the answer-side columns. The answers were all written afresh, and the
+answer figures in part 1's section above are the new run's.
 
 **H1 — the `sections` chunker.** Predicted: cutting at headings and keeping tables whole raises
 `page_recall@5` on `table` and `multi_section` questions, leaves `lookup` within one question of the
@@ -518,10 +522,10 @@ alone, `q019`, which only `sections` reached, and `q021`, which only the re-rank
 **H4 — faithfulness.** Predicted: faithfulness is above 0.90 on every row, because the answer prompt
 forbids answering outside the passages and every citation is verified; where it is lower, the
 failing claims are figures copied with a different year or unit. **Partly held.** The first half
-held: faithfulness runs from 0.91 on `lexical-only` to 0.97 on both re-ranked rows. The guess about
-the failures was wrong. Read through `--explain`, none of the unsupported claims on any row is a
-figure with the wrong year or unit; they are of two other kinds. Some are true facts from outside
-the passages: on `q021`, about a trip to Portugal and one to Puerto Rico, the hybrid did not
+held: faithfulness runs from 0.91 on `lexical-only` to 0.97 on both re-ranked configurations. The
+guess about the failures was wrong. Read through `--explain`, none of the unsupported claims on any
+row is a figure with the wrong year or unit; they are of two other kinds. Some are true facts from
+outside the passages: on `q021`, about a trip to Portugal and one to Puerto Rico, the hybrid did not
 retrieve page 53, and the answer said anyway that Puerto Rico counts as part of the U.S. for
 Medicare, which page 53 does say but none of its passages did. That is exactly what faithfulness is
 there to catch. Others are the question's own details worked into a rule the passages do give: on
@@ -548,18 +552,18 @@ whole, the comparison chart on pages 11–12 and the enrollment-period table on 
 the top 5 of many questions they are no use for. With the re-ranker choosing the five, both tables
 turn up far less often, and mostly where they help.
 
-**Answer relevance barely separates the rows.** Five of them sit between 0.53 and 0.58, and
-`lexical-only`, at 0.43, is the only one that stands apart. Two things in how the metric is built
-account for that. An answer the judge calls noncommittal scores 0 whatever questions it produced, so
-every abstention it calls noncommittal is a 0 in its row's mean, and `lexical-only`, which misses
-the most pages, also has the lowest `abstention_accuracy`, 72.5%. And the ceiling is not 1.0 in
-practice: the judge writes its questions from the answer alone, worded differently from one another
-and asking only for what the answer gives, while a golden question carries the asker's own situation
-("My mom turns 65 on March 12…"). Only a generated question that nearly copies the real one comes
-close to a similarity of 1, and since an answer's score is the mean over its questions, no answer on
-any row gets near it. So this column ranks the rows only weakly here, and the other three metrics
-carry the comparison; a mean in the middle of the scale reflects how the metric is built, not
-answers that miss the point.
+**Answer relevance barely separates the rows.** Five of them sit between 0.53 and 0.58, counting the
+two named runs for `sections` and `sections+rerank`, and `lexical-only`, at 0.43, is the only one
+that stands apart. Two things in how the metric is built account for that. An answer the judge calls
+noncommittal scores 0 whatever questions it produced, so every abstention it calls noncommittal is a
+0 in its row's mean, and `lexical-only`, which misses the most pages, also has the lowest
+`abstention_accuracy`, 72.5%. And the ceiling is not 1.0 in practice: the judge writes its questions
+from the answer alone, worded differently from one another and asking only for what the answer
+gives, while a golden question carries the asker's own situation ("My mom turns 65 on March 12…").
+Only a generated question that nearly copies the real one comes close to a similarity of 1, and
+since an answer's score is the mean over its questions, no answer on any row gets near it. So this
+column ranks the rows only weakly here, and the other three metrics carry the comparison; a mean in
+the middle of the scale reflects how the metric is built, not answers that miss the point.
 
 **The movement table counts chunks, page hit counts pages.** The table says `hybrid+rerank` lifted
 10 questions' first expected-page chunk into the top 5, while `page_hit@5` rose by four questions,
@@ -569,10 +573,10 @@ about the page. Six of the ten are questions of that kind. On `q001`, the hybrid
 at rank 1, in a window that stops mid-sentence just before the income limits that raise the premium;
 the re-ranker put first the next window, which fusion had placed at rank 7 and which states them.
 The page was a hit either way, but only the lifted window holds the rest of the answer, the kind of
-gain context recall can see and page hit cannot. `sections+rerank` shows the same pattern: 6 lifted,
-and one question newly hit, `q021`. The table is computed from each run's stored top 5, so it cannot
-see a page the re-ranker pushed out; comparing each re-ranked row with its un-re-ranked twin can,
-and neither re-ranked row lost a page its twin had.
+gain context recall can see and page hit cannot. In the `sections+rerank` run the pattern is the
+same: 6 lifted, and one question newly hit, `q021`. The table is computed from each run's stored top
+5, so it cannot see a page the re-ranker pushed out; comparing each re-ranked row with its
+un-re-ranked twin can, and neither re-ranked row lost a page its twin had.
 
 ## The corpus
 
