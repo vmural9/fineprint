@@ -135,7 +135,12 @@ def test_a_question_the_excerpts_answer_can_be_answered_in_one_turn():
     assert retriever.calls == [(QUESTION, "hybrid", 5)]
     (call,) = chat.calls
     assert call.system == AGENT_SYSTEM_PROMPT
-    assert call.messages == [{"role": "user", "content": build_user_prompt(QUESTION, [HOSPITAL])}]
+    assert call.messages == [
+        {
+            "role": "user",
+            "content": f"Today's date: 2026-10-10.\n\n{build_user_prompt(QUESTION, [HOSPITAL])}",
+        }
+    ]
     assert [tool.name for tool in call.tools] == [
         *(tool.name for tool in TOOL_SPECS),
         RECORD_ANSWER,
@@ -151,6 +156,16 @@ def test_a_question_the_excerpts_answer_can_be_answered_in_one_turn():
     assert (response.input_tokens, response.output_tokens) == (900, 120)
     assert response.model == "scripted-tool-model"
     assert response.cost_usd is None and response.trace_id is None
+
+
+def test_the_first_message_gives_the_model_the_date_it_is_given_as_today():
+    chat = ScriptedToolModel([[record_answer(VALID_ANSWER)]])
+
+    ask(chat, today=date(2027, 2, 14))
+
+    first = chat.calls[0].messages[0]["content"]
+    assert first.splitlines()[0] == "Today's date: 2027-02-14."
+    assert first.endswith(build_user_prompt(QUESTION, [HOSPITAL]))
 
 
 def test_the_record_answer_tool_takes_the_draft_answer_schema():
@@ -453,17 +468,21 @@ GOLDEN_SET = Path(__file__).resolve().parent.parent / "evals" / "golden_set.json
 def test_the_agent_looks_up_the_days_61_to_90_coinsurance_for_golden_question_q023():
     """The real agent on q023: 80 days into a hospital stay, what does Dad pay each day?
 
-    Calls Bedrock (an embedding, the answer model's turns, and a re-rank when one is configured)
-    and reads the configured chunk set from the database, which must be ingested. Run it with
+    Calls Bedrock (an embedding, a re-rank and the answer model's turns) and reads the
+    database. Run it with
 
         AWS_PROFILE=<your-aws-profile> AWS_REGION=us-west-2 uv run pytest -m live -s \\
             tests/test_agent.py
+
+    The `sections` chunk set must be ingested.
     """
     if boto3.session.Session().get_credentials() is None:
         pytest.skip("no AWS credentials: run with AWS_PROFILE=<your-profile> AWS_REGION=us-west-2")
     items = [json.loads(line) for line in GOLDEN_SET.read_text().splitlines() if line.strip()]
     question = next(item["question"] for item in items if item["id"] == "q023")
-    settings = Settings()
+    # The `agent` evaluation configuration: the sections chunk set, re-ranked. Set here rather
+    # than read from `.env`, so the test asks the same thing wherever it runs.
+    settings = Settings(chunk_set="sections", reranker_provider="bedrock")
     tracer = Tracer()
 
     with connection_pool(settings.database_url) as pool:

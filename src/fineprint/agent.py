@@ -13,7 +13,8 @@ whose input is the same `DraftAnswer` the plain answer path validates. Every tur
 call at least one of them, and may call several at once. The loop runs the tool calls, sends
 their results back, and stops when the model records its answer:
 
-1. Retrieve once, or take the passages the caller already retrieved.
+1. Retrieve once, or take the passages the caller already retrieved. The first message gives
+   today's date before the question, so "my mom turns 65 on March 12" has a year to work from.
 2. Ask for a turn. Run each tool call it makes, each in a `tool` span of its own, and send the
    results back; an error a tool raises goes back too, marked as one, so the model can say the
    handbook does not cover that case.
@@ -65,7 +66,10 @@ the answer does arithmetic on such an amount (a daily coinsurance over a number 
 do the arithmetic on the exact amount the tool returned. Call check_enrollment_window whenever \
 the answer gives a date worked out from someone's birthday, such as when their Initial \
 Enrollment Period starts or ends or when their coverage would start, and take every such date \
-from its result instead of working it out yourself. Any other amount must come from the \
+from its result instead of working it out yourself. The message gives today's date: when the \
+question gives a birthday without a year, or speaks of now or this year, work the year out from \
+today's date, and when the question sets a different now (such as "It's now February"), pass \
+that date to check_enrollment_window as as_of. Any other amount must come from the \
 excerpts, copied as rule 2 says; an amount that is in neither a tool result nor an excerpt is \
 not stated. If a tool returns an error, the handbook does not cover that case: say so in the \
 answer and send the reader somewhere that does know, as rule 4 says, rather than working the \
@@ -179,7 +183,11 @@ def _loop(
 ) -> AgentResponse:
     """Ask for turns until the model records an answer that validates."""
     messages: list[dict[str, Any]] = [
-        {"role": "user", "content": build_user_prompt(question, chunks)}
+        {
+            "role": "user",
+            "content": f"Today's date: {today.isoformat()}.\n\n"
+            + build_user_prompt(question, chunks),
+        }
     ]
     tools = [*TOOL_SPECS, RECORD_ANSWER_SPEC]
     turns: list[ToolTurn] = []
