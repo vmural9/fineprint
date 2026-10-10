@@ -25,6 +25,7 @@ was settled by live probes against Bedrock in us-west-2, on 2026-09-21 unless da
 """
 
 import time
+from collections.abc import Sequence
 from typing import Any
 
 import anthropic
@@ -37,6 +38,9 @@ from fineprint.providers.base import (
     ProviderRequestError,
     ProviderTimeoutError,
     ProviderUnavailableError,
+    ToolCall,
+    ToolSpec,
+    ToolTurn,
 )
 
 # The single tool the model answers through. The name shows up in its refusals, so it reads
@@ -89,7 +93,8 @@ class InvalidToolInputError(ChatModelError):
 
 
 class BedrockChatModel:
-    """Asks `us.anthropic.claude-opus-5` for an answer shaped like a Pydantic model."""
+    """Asks `us.anthropic.claude-opus-5` for an answer shaped like a Pydantic model, or for a
+    turn of tool calls (`complete_with_tools`), which is what the agent is built on."""
 
     def __init__(
         self,
@@ -224,6 +229,71 @@ class BedrockChatModel:
         )
         error.input_tokens, error.output_tokens = input_tokens, output_tokens
         raise error
+
+    def complete_with_tools(
+        self,
+        system: str,
+        messages: list[dict[str, Any]],
+        tools: Sequence[ToolSpec],
+        *,
+        force_tool: str | None = None,
+    ) -> ToolTurn:
+        """One turn of a conversation in which the model must call at least one of `tools`.
+
+        `tool_choice` is `{"type": "any"}`, or `{"type": "tool", "name": force_tool}` when one
+        tool is demanded. Several calls in one reply are allowed, because asking for two figures
+        at once saves a round trip. The reply's content blocks come back untouched in `content`,
+        since the next turn has to send them back exactly as they came.
+        """
+        tool_choice = (
+            {"type": "any"} if force_tool is None else {"type": "tool", "name": force_tool}
+        )
+        started = time.perf_counter()
+        response = self._create(
+            model=self.model,
+            max_tokens=self.max_tokens,
+            system=system,
+            messages=messages,
+            tools=[
+                {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "input_schema": tool.input_schema,
+                }
+                for tool in tools
+            ],
+            tool_choice=tool_choice,
+        )
+        latency_ms = (time.perf_counter() - started) * 1000
+        input_tokens = response.usage.input_tokens
+        output_tokens = response.usage.output_tokens
+
+        try:
+            self._check_stop_reason(response)
+            calls = [
+                ToolCall(id=block.id, name=block.name, arguments=dict(block.input))
+                for block in response.content
+                if block.type == "tool_use"
+            ]
+            if not calls:
+                blocks = [block.type for block in response.content] or ["nothing"]
+                raise NoToolCallError(
+                    f"{self.model} called no tool: it stopped with "
+                    f"stop_reason={response.stop_reason!r} and returned {', '.join(blocks)}."
+                )
+        except ChatModelError as error:
+            error.input_tokens, error.output_tokens = input_tokens, output_tokens
+            raise
+
+        return ToolTurn(
+            tool_calls=calls,
+            content=response.content,
+            model=self.model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            latency_ms=latency_ms,
+            stop_reason=response.stop_reason,
+        )
 
     def _check_stop_reason(self, response: Any) -> None:
         """Raise when the model stopped for a reason that makes its content unusable."""

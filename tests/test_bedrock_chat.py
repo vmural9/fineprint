@@ -17,6 +17,8 @@ from fineprint.providers.base import (
     ProviderRequestError,
     ProviderTimeoutError,
     ProviderUnavailableError,
+    ToolCall,
+    ToolSpec,
 )
 from fineprint.providers.bedrock_chat import (
     TOOL_NAME,
@@ -458,3 +460,129 @@ def test_the_defaults_are_sixty_seconds_and_four_retries(monkeypatch):
     client = BedrockChatModel(model=MODEL, region="us-west-2").client
 
     assert client.kwargs == {"aws_region": "us-west-2", "max_retries": 4, "timeout": 60.0}
+
+
+# --- complete_with_tools ------------------------------------------------------------------
+
+LOOKUP = ToolSpec(
+    name="lookup_cost_figure",
+    description="Look up one of the listed 2026 Medicare dollar amounts.",
+    input_schema={
+        "type": "object",
+        "properties": {"figure": {"type": "string", "enum": ["part_b_deductible"]}},
+        "required": ["figure"],
+    },
+)
+ANSWER = ToolSpec(
+    name=TOOL_NAME,
+    description="Record your final answer.",
+    input_schema=DraftAnswer.model_json_schema(),
+)
+
+
+def named_call(name: str, tool_input: dict, *, block_id: str) -> ToolUseBlock:
+    return ToolUseBlock(id=block_id, name=name, input=tool_input, type="tool_use")
+
+
+def test_a_tool_turn_offers_every_tool_and_lets_the_model_choose_any_of_them():
+    reply = message(
+        blocks=[named_call("lookup_cost_figure", {"figure": "part_b_deductible"}, block_id="t1")]
+    )
+    chat, client = chat_model(reply)
+    conversation = [{"role": "user", "content": "the question and the excerpts"}]
+
+    chat.complete_with_tools("system rules", conversation, [LOOKUP, ANSWER])
+
+    (request,) = client.messages.calls
+    assert request["model"] == MODEL
+    assert request["system"] == "system rules"
+    assert request["messages"] == conversation
+    assert request["max_tokens"] == chat.max_tokens
+    assert request["tools"] == [
+        {
+            "name": "lookup_cost_figure",
+            "description": LOOKUP.description,
+            "input_schema": LOOKUP.input_schema,
+        },
+        {
+            "name": TOOL_NAME,
+            "description": ANSWER.description,
+            "input_schema": ANSWER.input_schema,
+        },
+    ]
+    # "any": some tool must be called, and several calls in one reply are allowed.
+    assert request["tool_choice"] == {"type": "any"}
+    assert "temperature" not in request
+
+
+def test_a_forced_tool_turn_names_the_one_tool_the_model_must_call():
+    chat, client = chat_model(message(blocks=[named_call(TOOL_NAME, VALID_INPUT, block_id="t1")]))
+
+    chat.complete_with_tools("system rules", [], [LOOKUP, ANSWER], force_tool=TOOL_NAME)
+
+    assert client.messages.calls[0]["tool_choice"] == {"type": "tool", "name": TOOL_NAME}
+
+
+def test_every_tool_call_in_a_reply_comes_back_in_order_with_the_reply_to_echo():
+    reply = message(
+        blocks=[
+            TextBlock(text="I need two figures.", type="text"),
+            named_call("lookup_cost_figure", {"figure": "part_b_deductible"}, block_id="t1"),
+            named_call("check_enrollment_window", {"birth_date": "1961-05-10"}, block_id="t2"),
+        ],
+        input_tokens=1200,
+        output_tokens=95,
+    )
+    chat, _ = chat_model(reply)
+
+    turn = chat.complete_with_tools("system rules", [], [LOOKUP, ANSWER])
+
+    assert turn.tool_calls == [
+        ToolCall(id="t1", name="lookup_cost_figure", arguments={"figure": "part_b_deductible"}),
+        ToolCall(id="t2", name="check_enrollment_window", arguments={"birth_date": "1961-05-10"}),
+    ]
+    assert turn.content == reply.content
+    assert turn.model == MODEL
+    assert (turn.input_tokens, turn.output_tokens) == (1200, 95)
+    assert turn.stop_reason == "tool_use"
+    assert turn.latency_ms >= 0
+    assert turn.fallback_used is False
+
+
+@pytest.mark.parametrize(
+    ("reply", "expected"),
+    [
+        (message(blocks=[], stop_reason="refusal"), ModelRefusedError),
+        (
+            message(
+                blocks=[named_call(TOOL_NAME, VALID_INPUT, block_id="t1")],
+                stop_reason="max_tokens",
+            ),
+            ResponseTruncatedError,
+        ),
+        (
+            message(
+                blocks=[TextBlock(text="No tools today.", type="text")], stop_reason="end_turn"
+            ),
+            NoToolCallError,
+        ),
+    ],
+    ids=["refusal", "max_tokens", "no tool call"],
+)
+def test_a_tool_turn_that_cannot_be_used_raises_carrying_the_tokens_billed(reply, expected):
+    reply.usage = Usage(input_tokens=1500, output_tokens=40)
+    chat, _ = chat_model(reply)
+
+    with pytest.raises(expected) as raised:
+        chat.complete_with_tools("system rules", [], [LOOKUP, ANSWER])
+
+    assert (raised.value.input_tokens, raised.value.output_tokens) == (1500, 40)
+
+
+def test_a_tool_turn_maps_sdk_failures_to_provider_errors():
+    chat = BedrockChatModel(
+        model=MODEL, region="us-west-2", client=RaisingClient(status_error(529))
+    )
+
+    with pytest.raises(ProviderUnavailableError):
+        chat.complete_with_tools("system rules", [], [LOOKUP, ANSWER])
