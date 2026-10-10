@@ -19,7 +19,8 @@ reachable through a dependency function, which is the seam the tests replace.
 the question cost. The tracer is flushed and shut down when the service stops.
 
 Status codes follow the spec: 422 when the request itself is wrong, 502 when a provider
-fails, 503 when the database is unreachable or the edition has not been ingested. An
+fails, 503 when the database is unreachable, the edition has not been ingested, or a model
+provider is unavailable or timed out even after the retries and the fallback model. An
 abstention is not an error — "the handbook doesn't say" is a 200 with
 `found_in_handbook: false`.
 """
@@ -39,7 +40,7 @@ from fineprint.answer import AnswerResponse, answer_question
 from fineprint.config import Settings
 from fineprint.db import connection_pool, describe_database
 from fineprint.providers import factory
-from fineprint.providers.base import ChatModel
+from fineprint.providers.base import ChatModel, ProviderTimeoutError, ProviderUnavailableError
 from fineprint.retrieval import (
     EditionNotIngestedError,
     Retriever,
@@ -109,6 +110,8 @@ class SearchResponse(BaseModel):
     query: str
     mode: SearchMode
     results: list[SearchHit]
+    # False when no re-ranker ran, or when it failed and the order is the fused one.
+    reranked: bool
 
 
 class AskRequest(BaseModel):
@@ -226,6 +229,11 @@ def provider_failures(doing: str) -> Iterator[None]:
         raise HTTPException(
             status_code=503, detail=f"the database is not available: {first_line(error)}"
         ) from error
+    except (ProviderTimeoutError, ProviderUnavailableError) as error:
+        logger.warning("%s failed: %s: %s", doing, type(error).__name__, error)
+        raise HTTPException(
+            status_code=503, detail=f"model provider unavailable: {first_line(error)}"
+        ) from error
     except Exception as error:
         logger.exception("%s failed", doing)
         raise HTTPException(
@@ -242,6 +250,8 @@ def search(request: SearchRequest, retriever: RetrieverDep, tracer: TracerDep) -
     `fused_rank` is where fusion put the chunk, before any re-ranking, and is null outside
     hybrid mode. When a re-ranker is configured, a hybrid search is re-ranked, and
     `rerank_score` holds the re-ranker's score, which is also `score`; otherwise it is null.
+    `reranked` says whether the re-ranker's order was used: it is false when none ran, and
+    also when one was configured but failed, in which case the order is the fused one.
     """
     with (
         provider_failures("search"),
@@ -253,6 +263,7 @@ def search(request: SearchRequest, retriever: RetrieverDep, tracer: TracerDep) -
         query=request.query,
         mode=request.mode,
         results=[SearchHit(**asdict(chunk)) for chunk in chunks],
+        reranked=any(chunk.rerank_score is not None for chunk in chunks),
     )
 
 

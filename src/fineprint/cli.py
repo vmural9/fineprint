@@ -30,6 +30,7 @@ from fineprint.config import Settings
 from fineprint.db import connection_pool, describe_database, init_db
 from fineprint.editions import EDITIONS
 from fineprint.ingest import IngestError, ingest
+from fineprint.providers.base import ProviderTimeoutError, ProviderUnavailableError
 from fineprint.providers.factory import get_chat_model, get_embedder, get_reranker, get_tracer
 from fineprint.retrieval import (
     SEARCH_MODES,
@@ -223,6 +224,8 @@ def report_failure(error: Exception, settings: Settings) -> int:
             "fineprint ingest",
             file=sys.stderr,
         )
+    elif isinstance(error, ProviderTimeoutError | ProviderUnavailableError):
+        print(f"ERROR: model provider unavailable: {str(error).splitlines()[0]}", file=sys.stderr)
     else:
         print(f"ERROR: {type(error).__name__}: {str(error).splitlines()[0]}", file=sys.stderr)
     return 1

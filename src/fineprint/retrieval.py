@@ -28,6 +28,7 @@ The ranking Postgres does here is its own built-in `ts_rank_cd`, not BM25 (see d
 everything in this module calls it "lexical" and never "BM25".
 """
 
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Any, Literal, NamedTuple
@@ -37,8 +38,10 @@ from psycopg_pool import ConnectionPool
 
 from fineprint.config import Settings
 from fineprint.db import describe_database
-from fineprint.providers.base import Embedder, Reranker
+from fineprint.providers.base import Embedder, ProviderError, Reranker
 from fineprint.tracing import Tracer
+
+logger = logging.getLogger(__name__)
 
 SearchMode = Literal["hybrid", "vector", "lexical"]
 SEARCH_MODES: tuple[SearchMode, ...] = ("hybrid", "vector", "lexical")
@@ -270,8 +273,9 @@ class Retriever:
         and the best `top_k` are kept in its order. Each keeps its fused rank, and its score
         becomes the re-ranker's. A `top_k` above `RERANK_CANDIDATES` widens what it reads to
         `top_k`, so a search never returns fewer than it was asked for while the pool has them.
-        `vector` and `lexical` are never re-ranked: they exist to measure one retriever on its
-        own.
+        When the re-ranker fails with a `ProviderError`, the first `top_k` of the fused order are
+        returned, each with `rerank_score` None. `vector` and `lexical` are never re-ranked:
+        they exist to measure one retriever on its own.
         """
         if self.tracer is None:
             return self._search(question, mode, top_k)
@@ -294,7 +298,19 @@ class Retriever:
             return ordered[:kept]
 
         shortlist = ordered[: max(self.settings.rerank_candidates, kept)]
-        reranked = self.reranker.rerank(question, [chunk.text for chunk in shortlist], top_n=kept)
+        try:
+            reranked = self.reranker.rerank(
+                question, [chunk.text for chunk in shortlist], top_n=kept
+            )
+        except ProviderError as error:
+            # The fused order is a good answer to the same question, only less sharp, and the
+            # traced re-ranker has already put the error on its span.
+            logger.warning(
+                "re-ranker failed (%s: %s); returning the fused order",
+                type(error).__name__,
+                error,
+            )
+            return ordered[:kept]
         return [
             replace(
                 shortlist[result.index], score=result.score, rank=rank, rerank_score=result.score
