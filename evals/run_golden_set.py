@@ -4,12 +4,20 @@
     python -m evals.run_golden_set --config sections+rerank
     python -m evals.run_golden_set --config lexical-only --retrieval-only
 
-`evals/configs.py` registers six configurations. Part 1 left three: `hybrid` fuses both
+`evals/configs.py` registers seven configurations. Part 1 left three: `hybrid` fuses both
 retrievers, `vector-only` searches by meaning alone, and `lexical-only` searches by words alone.
 Part 2 adds `hybrid+rerank`, where Cohere Rerank 3.5 re-orders the fused list before the top-k
 cut, and `sections` / `sections+rerank`, which run hybrid retrieval — and its re-ranked variant —
-over the `sections` chunk set instead of `fixed-220w`. `--config` names one of the six; every
-other setting for the run comes from `settings_for(config, Settings())`.
+over the `sections` chunk set instead of `fixed-220w`. Part 3 adds `agent`, which retrieves like
+`sections+rerank` and then lets the model call two tools before it answers. `--config` names one
+of the seven; every other setting for the run comes from `settings_for(config, Settings())`.
+
+Every question runs inside a trace (`fineprint.tracing`): the session id is the run id, the tags
+are `eval` and the configuration's name, and the question id is in the metadata. The trace's
+`TraceRecord` (its latency, its cost and the calls inside it) is stored on the question's row, and
+the summary reports the run's cost, its p95 latency and any question the fallback model answered.
+With `TRACING_PROVIDER=langfuse` the same traces are also sent to Langfuse; with the default,
+"none", nothing leaves the process and cost and latency are still measured.
 
 `--retrieval-only` skips the answer model, which is the expensive call, but a run is neither free
 nor offline: every mode that searches by meaning embeds each question, and a configured
@@ -26,6 +34,7 @@ import argparse
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, is_dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -52,7 +61,8 @@ from evals.results import (
 )
 from fineprint.config import Settings
 from fineprint.db import connection_pool, describe_database
-from fineprint.providers.factory import get_reranker
+from fineprint.providers.factory import get_reranker, get_tracer
+from fineprint.tracing import Tracer
 
 EXIT_OK = 0
 EXIT_FAILED = 1
@@ -84,21 +94,64 @@ def run_questions(
     mode: str,
     top_k: int,
     report: Callable[[str], None] = print,
+    tracer: Tracer | None = None,
+    run_id: str | None = None,
+    config_name: str | None = None,
 ) -> list[QuestionResult]:
     """Search for every question, optionally answer it, and score what came back.
 
     The retriever and the answer function are arguments rather than globals so that the tests
-    can drive this loop with fakes and no database, no AWS, and no network.
+    can drive this loop with fakes and no database, no AWS, and no network. Given a `tracer`,
+    each question is one trace, with `run_id` as its session and `config_name` among its tags, and
+    its `TraceRecord` is stored on the row; the retriever and the answer function should have
+    been built with the same tracer so their calls land inside it.
     """
     rows: list[QuestionResult] = []
     for item in items:
-        row = _run_one(item, retriever, answer_fn, mode=mode, top_k=top_k)
+        row = _run_one(
+            item,
+            retriever,
+            answer_fn,
+            mode=mode,
+            top_k=top_k,
+            tracer=tracer,
+            run_id=run_id,
+            config_name=config_name,
+        )
         rows.append(row)
         report(progress_line(row))
     return rows
 
 
 def _run_one(
+    item: GoldenItem,
+    retriever: Retriever,
+    answer_fn: AnswerFunction | None,
+    *,
+    mode: str,
+    top_k: int,
+    tracer: Tracer | None,
+    run_id: str | None,
+    config_name: str | None,
+) -> QuestionResult:
+    """One question inside its trace, if there is a tracer; the trace's record goes on the row."""
+    if tracer is None:
+        return _answer_one(item, retriever, answer_fn, mode=mode, top_k=top_k)
+    with tracer.trace(
+        "eval-question",
+        input=item.question,
+        session_id=run_id,
+        tags=["eval", config_name] if config_name else ["eval"],
+        metadata={"question_id": item.id},
+    ) as trace:
+        row = _answer_one(item, retriever, answer_fn, mode=mode, top_k=top_k)
+        if row.answer is not None:
+            trace.set_output(row.answer.get("answer"))
+    row.trace = trace.record
+    return row
+
+
+def _answer_one(
     item: GoldenItem,
     retriever: Retriever,
     answer_fn: AnswerFunction | None,
@@ -207,12 +260,30 @@ def _flag(value: float | None) -> str:
     return metrics.NOT_MEASURED if value is None else str(int(value))
 
 
+def fallback_questions(result: RunResult) -> list[str]:
+    """The ids of the questions whose answer came from the fallback model."""
+    return [
+        row.id
+        for row in result.questions
+        if row.trace is not None
+        and any(call.kind == "generation" and call.fallback for call in row.trace.calls)
+    ]
+
+
 def summary_lines(result: RunResult) -> list[str]:
-    """The aggregate numbers, recomputed from the rows that were just written."""
+    """The aggregate numbers, recomputed from the rows that were just written.
+
+    Cost, latency and fallbacks come from the same aggregates the scoreboard prints, so they are
+    dashes unless every question has a trace with a cost.
+    """
     totals = result.aggregates
     failed = len(result.errors)
     manual = totals.manual
-    return [
+    total_cost = (
+        None if totals.cost_per_query_usd is None else totals.cost_per_query_usd * totals.questions
+    )
+    fallbacks = metrics.NOT_MEASURED if totals.fallbacks is None else totals.fallbacks
+    lines = [
         f"{totals.questions} questions, {totals.answerable} answerable, "
         f"{totals.answered} answered, {failed} failed",
         f"  page_hit@5           {metrics.as_percentage(totals.page_hit)}",
@@ -221,7 +292,16 @@ def summary_lines(result: RunResult) -> list[str]:
         f"  cited_page_hit       {metrics.as_percentage(totals.cited_page_hit)}",
         f"  abstention_accuracy  {metrics.as_percentage(totals.abstention_accuracy)}",
         f"  manual_pass          {metrics.as_percentage(manual.rate)} ({manual.reviewed} reviewed)",
+        f"  cost                 {metrics.as_money(total_cost)} in all, "
+        f"{metrics.as_money(totals.cost_per_query_usd)} a question",
+        f"  p95 latency          {metrics.as_seconds(totals.p95_latency_ms)}",
+        f"  fallbacks            {fallbacks}",
     ]
+    answered_by_fallback = fallback_questions(result)
+    if answered_by_fallback:
+        model = result.config.fallback_model or "the fallback model"
+        lines.append(f"  answered by {model}: {', '.join(answered_by_fallback)}")
+    return lines
 
 
 def corpus_from_database(pool: Any, edition: int) -> Corpus:
@@ -237,9 +317,10 @@ def corpus_from_database(pool: Any, edition: int) -> Corpus:
     return Corpus(edition=edition, sha256=row[0])
 
 
-def build_retriever(settings: Settings, pool: Any) -> Retriever:
+def build_retriever(settings: Settings, pool: Any, tracer: Tracer | None = None) -> Retriever:
     """The real retriever, with the real embedder — and a re-ranker, when this configuration
-    turned one on — behind it.
+    turned one on — behind it. All three share `tracer`, so their calls land in the trace of the
+    question being run.
 
     `fineprint.retrieval` is imported here rather than at the top of the module so that the
     metrics, the results file and this loop can be imported — and tested — without it.
@@ -249,23 +330,38 @@ def build_retriever(settings: Settings, pool: Any) -> Retriever:
     from fineprint.providers.factory import get_embedder
     from fineprint.retrieval import Retriever as RealRetriever
 
-    return RealRetriever(pool, get_embedder(settings), settings, get_reranker(settings))
+    return RealRetriever(
+        pool,
+        get_embedder(settings, tracer),
+        settings,
+        get_reranker(settings, tracer),
+        tracer,
+    )
 
 
-def build_answer_function(settings: Settings, retriever: Retriever) -> AnswerFunction:
+def build_answer_function(
+    settings: Settings,
+    retriever: Retriever,
+    *,
+    tools: bool = False,
+    today: date | None = None,
+    tracer: Tracer | None = None,
+) -> AnswerFunction:
     """Bind the chat model into something that answers one question from its own chunks.
 
     `retriever` is threaded through only because `answer_question` still requires one; passing
     `chunks` means it never calls it, so the loop's own single retrieval is the only search each
-    question causes.
+    question causes. The chat model, fallback included, is traced with `tracer`.
     """
     from fineprint.answer import answer_question
     from fineprint.providers.factory import get_chat_model
 
-    chat = get_chat_model(settings)
+    if tools:
+        raise RunError("the tools branch waits for src/fineprint/agent.py")
+    chat = get_chat_model(settings, tracer)
 
     def answer(question: str, chunks: Sequence[Any]) -> Any:
-        return answer_question(question, retriever, chat, chunks=chunks)
+        return answer_question(question, retriever, chat, chunks=chunks, tracer=tracer)
 
     return answer
 
@@ -297,6 +393,11 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def run_date() -> date:
+    """The day of the run: what the enrollment tool treats as today, and the file records."""
+    return date.today()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the golden set once and write `evals/results/<run_id>.json`."""
     args = build_parser().parse_args(argv)
@@ -317,17 +418,29 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"database {describe_database(settings.database_url)}"
     )
 
+    run_id = make_run_id(args.config)
+    today = run_date()
+    tracer = get_tracer(settings)
     try:
         with connection_pool(settings.database_url) as pool:
             corpus = corpus_from_database(pool, settings.corpus_edition)
-            retriever = build_retriever(settings, pool)
-            answer_fn = None if args.retrieval_only else build_answer_function(settings, retriever)
+            retriever = build_retriever(settings, pool, tracer)
+            answer_fn = (
+                None
+                if args.retrieval_only
+                else build_answer_function(
+                    settings, retriever, tools=eval_config.tools, today=today, tracer=tracer
+                )
+            )
             rows = run_questions(
                 items,
                 retriever,
                 answer_fn,
                 mode=mode,
                 top_k=settings.retrieval_top_k,
+                tracer=tracer,
+                run_id=run_id,
+                config_name=args.config,
             )
     except RunError as error:
         print(f"ERROR: {error}", file=sys.stderr)
@@ -343,9 +456,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             file=sys.stderr,
         )
         return EXIT_FAILED
+    finally:
+        tracer.flush()
+        tracer.shutdown()
 
+    answering = not args.retrieval_only
     result = RunResult(
-        run_id=make_run_id(args.config),
+        run_id=run_id,
         created_at=now_utc(),
         git=git_state(),
         config=RunConfig(
@@ -356,9 +473,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             candidates=settings.retrieval_candidates,
             rrf_k=settings.rrf_k,
             embedding_model=settings.embedding_model,
-            llm_model=None if args.retrieval_only else settings.llm_model,
+            llm_model=settings.llm_model if answering else None,
             reranker=eval_config.reranker,
             rerank_candidates=settings.rerank_candidates if eval_config.reranker else None,
+            tools=eval_config.tools,
+            tools_today=today.isoformat() if eval_config.tools else None,
+            fallback_model=(settings.fallback_llm_model or None) if answering else None,
+            tracing=settings.tracing_provider,
+            langfuse_base_url=(
+                settings.langfuse_base_url if settings.tracing_provider == "langfuse" else None
+            ),
         ),
         corpus=corpus,
         golden_set=GoldenSetInfo(sha256=sha256_of(DEFAULT_GOLDEN_SET), count=len(items)),
