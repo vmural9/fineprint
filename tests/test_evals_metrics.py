@@ -22,6 +22,7 @@ from evals.metrics import (
     percentile,
     reciprocal_rank,
     score_question,
+    step_times,
 )
 from fineprint.tracing import CallRecord, TraceRecord
 
@@ -556,3 +557,59 @@ def test_display_rounding_is_half_up_on_the_decimal_value_not_on_the_float():
     assert as_money(0.00005) == "$0.0001"
     assert as_money(0.00004999) == "$0.0000"
     assert as_money(0.00015) == "$0.0002"
+
+
+# --- where the time went ------------------------------------------------------------
+
+
+def timed_call(kind: str, latency_ms: float) -> CallRecord:
+    return CallRecord(
+        kind=kind,
+        name=kind,
+        model=None,
+        input_tokens=None,
+        output_tokens=None,
+        units=None,
+        latency_ms=latency_ms,
+        cost_usd=None,
+        error=None,
+    )
+
+
+def test_step_times_sum_each_kind_per_question_then_summarise_over_the_questions():
+    # Question 1: 1 s search, generations 2 s + 3 s, a 0.5 s tool, of 10 s in all.
+    # Question 2: 3 s search, one 6 s generation, no tool, of 10 s in all.
+    # Question 3: 2 s search, one 1 s generation, of 4 s in all.
+    traces = [
+        trace(
+            10_000,
+            None,
+            timed_call("retriever", 1000),
+            timed_call("generation", 2000),
+            timed_call("generation", 3000),
+            timed_call("tool", 500),
+        ),
+        trace(10_000, None, timed_call("retriever", 3000), timed_call("generation", 6000)),
+        trace(4_000, None, timed_call("retriever", 2000), timed_call("generation", 1000)),
+    ]
+
+    steps = step_times(traces)
+
+    assert (steps.retriever_p50_ms, steps.retriever_p95_ms) == (2000.0, 3000.0)
+    assert (steps.generation_p50_ms, steps.generation_p95_ms) == (5000.0, 6000.0)
+    # Tools per question are 500, 0, 0: the question with no tool counts as 0 s.
+    assert (steps.tools_p50_ms, steps.tools_p95_ms) == (0.0, 500.0)
+    # Shares 0.5, 0.6, 0.25: the median is the second smallest, 0.5.
+    assert steps.generation_share_p50 == 0.5
+
+
+def test_a_question_with_no_time_is_left_out_of_the_share():
+    steps = step_times([trace(0, None), trace(2_000, None, timed_call("generation", 1000))])
+
+    assert steps.generation_share_p50 == 0.5
+    assert step_times([trace(0, None)]).generation_share_p50 is None
+
+
+def test_step_times_of_no_questions_is_an_error():
+    with pytest.raises(ValueError):
+        step_times([])

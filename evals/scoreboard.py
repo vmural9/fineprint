@@ -252,6 +252,27 @@ SERVING_NOTE = (
     "is the number of questions where any generation ran on the fallback model."
 )
 
+STEP_COLUMNS = (
+    "Configuration",
+    "Retriever p50",
+    "Retriever p95",
+    "Generation p50",
+    "Generation p95",
+    "Tools p50",
+    "Tools p95",
+    "Generation share (median)",
+)
+
+STEP_NOTE = (
+    "Only rows with a trace stored for every question are in this table. *Retriever* is the "
+    "search step, including the question's embedding and the re-rank; *Generation* is the sum "
+    "of a question's calls to the answer model, the agent's turns included; *Tools* is the sum "
+    "of its tool calls, a dash for a row without tools. Each is summed per question, then taken "
+    "at the median (p50) and the 95th percentile (p95) over the run's questions by nearest "
+    "rank. *Generation share* is the median, over the questions, of generation time divided by "
+    "the question's whole time."
+)
+
 TOOL_COLUMNS = ("Configuration", "Tool", "Questions that called it", "Calls", "Errors")
 
 TOOL_NOTE = (
@@ -366,6 +387,16 @@ def _detail_section(
             *_table(SERVING_COLUMNS, serving),
             "",
             SERVING_NOTE,
+        ]
+    steps = _step_rows(results)
+    if steps:
+        lines += [
+            "",
+            "### Time by step",
+            "",
+            *_table(STEP_COLUMNS, steps),
+            "",
+            STEP_NOTE,
         ]
     tool_rows = _tool_rows(results)
     if tool_rows:
@@ -527,6 +558,34 @@ def _serving_rows(results: Mapping[str, RunResult]) -> list[list[str]]:
                 metrics.as_score(totals.generations_per_query),
                 metrics.as_score(totals.tool_calls_per_query),
                 fallbacks,
+            ]
+        )
+    return rows
+
+
+def _step_rows(results: Mapping[str, RunResult]) -> list[list[str]]:
+    """Where the time went, for each row in which every question has a trace.
+
+    A row with any question untraced is left out rather than shown with dashes: a median over
+    some of its questions would read as a measurement of the run.
+    """
+    rows = []
+    for name, result in _ordered(results):
+        traces = [question.trace for question in result.questions]
+        if not traces or any(trace is None for trace in traces):
+            continue
+        steps = metrics.step_times([trace for trace in traces if trace is not None])
+        tools = result.config.tools
+        rows.append(
+            [
+                name,
+                metrics.as_seconds(steps.retriever_p50_ms),
+                metrics.as_seconds(steps.retriever_p95_ms),
+                metrics.as_seconds(steps.generation_p50_ms),
+                metrics.as_seconds(steps.generation_p95_ms),
+                metrics.as_seconds(steps.tools_p50_ms) if tools else NOT_MEASURED,
+                metrics.as_seconds(steps.tools_p95_ms) if tools else NOT_MEASURED,
+                metrics.as_percentage(steps.generation_share_p50),
             ]
         )
     return rows

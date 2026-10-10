@@ -89,6 +89,14 @@ Only rows with a re-ranker are in this table. It is computed from the top 5 each
 
 Only rows with a trace stored for at least one question are in this table, and a cell is a dash unless every question of the run has a trace with a cost. Mean cost counts every question, unanswerable ones included. Latency is the wall time of the whole question, measured on one machine on one day. A generation is one call to the answer model, so a row that answers in a single call has 1.00; the agent's extra turns raise it. *Fallbacks* is the number of questions where any generation ran on the fallback model.
 
+### Time by step
+
+| Configuration | Retriever p50 | Retriever p95 | Generation p50 | Generation p95 | Tools p50 | Tools p95 | Generation share (median) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| agent | 1.0 s | 2.0 s | 5.5 s | 15.0 s | 0.4 s | 0.5 s | 70.8% |
+
+Only rows with a trace stored for every question are in this table. *Retriever* is the search step, including the question's embedding and the re-rank; *Generation* is the sum of a question's calls to the answer model, the agent's turns included; *Tools* is the sum of its tool calls, a dash for a row without tools. Each is summed per question, then taken at the median (p50) and the 95th percentile (p95) over the run's questions by nearest rank. *Generation share* is the median, over the questions, of generation time divided by the question's whole time.
+
 ### Tool calls
 
 | Configuration | Tool | Questions that called it | Calls | Errors |
