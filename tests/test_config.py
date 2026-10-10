@@ -1,7 +1,7 @@
 """Tests for the settings object: defaults, the environment, and `.env`."""
 
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from fineprint.config import Settings
 
@@ -23,6 +23,17 @@ SETTING_VARIABLES = (
     "RETRIEVAL_CANDIDATES",
     "RETRIEVAL_TOP_K",
     "RRF_K",
+    "TRACING_PROVIDER",
+    "LANGFUSE_PUBLIC_KEY",
+    "LANGFUSE_SECRET_KEY",
+    "LANGFUSE_BASE_URL",
+    "FALLBACK_LLM_MODEL",
+    "LLM_TIMEOUT_SECONDS",
+    "LLM_MAX_RETRIES",
+    "AWS_TIMEOUT_SECONDS",
+    "AWS_MAX_ATTEMPTS",
+    "AGENT_MAX_TOOL_TURNS",
+    "FAULT_INJECTION",
 )
 
 
@@ -88,9 +99,88 @@ def test_a_setting_that_is_not_a_number_is_rejected(clean_environment, monkeypat
     assert "retrieval_top_k" in str(excinfo.value)
 
 
-def test_no_setting_is_a_secret(clean_environment):
+def test_the_part_3_defaults(clean_environment):
+    settings = Settings()
+    assert settings.tracing_provider == "none"
+    assert settings.langfuse_public_key is None
+    assert settings.langfuse_secret_key is None
+    assert settings.langfuse_base_url is None
+    assert settings.fallback_llm_model == "us.anthropic.claude-sonnet-5"
+    assert settings.llm_timeout_seconds == 60
+    assert settings.llm_max_retries == 4
+    assert settings.aws_timeout_seconds == 10
+    assert settings.aws_max_attempts == 4
+    assert settings.agent_max_tool_turns == 4
+    assert settings.fault_injection == ""
+
+
+def test_an_empty_fallback_model_stays_empty_so_fallback_can_be_switched_off(
+    clean_environment, monkeypatch
+):
+    monkeypatch.setenv("FALLBACK_LLM_MODEL", "")
+
+    assert Settings().fallback_llm_model == ""
+
+
+def test_langfuse_tracing_is_refused_without_all_three_values(clean_environment, monkeypatch):
+    monkeypatch.setenv("TRACING_PROVIDER", "langfuse")
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
+
+    with pytest.raises(ValidationError) as excinfo:
+        Settings()
+
+    message = str(excinfo.value)
+    assert "LANGFUSE_SECRET_KEY" in message
+    assert "LANGFUSE_BASE_URL" in message
+    assert "LANGFUSE_PUBLIC_KEY" not in message, "only the missing values are named"
+
+
+def test_langfuse_values_left_empty_in_dot_env_count_as_missing(clean_environment):
+    (clean_environment / ".env").write_text(
+        "TRACING_PROVIDER=langfuse\nLANGFUSE_PUBLIC_KEY=\nLANGFUSE_SECRET_KEY=\n"
+        "LANGFUSE_BASE_URL=\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError) as excinfo:
+        Settings()
+
+    for name in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL"):
+        assert name in str(excinfo.value)
+
+
+def test_langfuse_tracing_is_accepted_with_all_three_values(clean_environment, monkeypatch):
+    monkeypatch.setenv("TRACING_PROVIDER", "langfuse")
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "https://us.cloud.langfuse.com")
+
+    settings = Settings()
+
+    assert settings.tracing_provider == "langfuse"
+    assert isinstance(settings.langfuse_secret_key, SecretStr)
+    assert settings.langfuse_secret_key.get_secret_value() == "sk-test"
+    assert "sk-test" not in repr(settings), "the secret key never shows in a repr"
+
+
+def test_the_langfuse_values_are_not_needed_while_tracing_is_off(clean_environment):
+    assert Settings().tracing_provider == "none"
+
+
+def test_an_unknown_tracing_provider_is_rejected(clean_environment, monkeypatch):
+    monkeypatch.setenv("TRACING_PROVIDER", "datadog")
+
+    with pytest.raises(ValidationError) as excinfo:
+        Settings()
+
+    assert "tracing_provider" in str(excinfo.value)
+
+
+def test_no_setting_is_a_secret_with_a_default(clean_environment):
     """Secrets come from the environment only and never have a default (project rule 3)."""
     secret_words = ("key", "secret", "token", "password", "credential")
     secrets = [name for name in Settings.model_fields if any(word in name for word in secret_words)]
 
-    assert secrets == [], f"these settings look like secrets: {secrets}"
+    assert sorted(secrets) == ["langfuse_public_key", "langfuse_secret_key"]
+    for name in secrets:
+        assert Settings.model_fields[name].default is None, f"{name} must not have a default"

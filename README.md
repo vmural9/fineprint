@@ -137,10 +137,11 @@ thin provider abstraction so part 3 can add retries and a second provider withou
 Prerequisites:
 
 - [uv](https://docs.astral.sh/uv/) and Docker.
-- An AWS account with Amazon Bedrock access to **both** models: `us.anthropic.claude-opus-5` and
-  `amazon.titan-embed-text-v2:0`, in the region you configure below, and credentials for it in your
-  environment. Both model calls go to Bedrock, so there is no separate API key to obtain and no
-  model runs on your machine.
+- An AWS account with Amazon Bedrock access to **three** models: `us.anthropic.claude-opus-5`,
+  `amazon.titan-embed-text-v2:0` and `cohere.rerank-v3-5:0`, in the region you configure below, and
+  credentials for it in your environment. The re-ranker is called because `.env.example` turns it
+  on, as the best configuration on the part 2 scoreboard. Every model call goes to Bedrock, so
+  there is no separate API key to obtain and no model runs on your machine.
 
 Nothing below needs any state you do not create here.
 
@@ -150,9 +151,10 @@ cd fineprint
 uv sync                                       # create the virtualenv and install everything
 ```
 
-Copy `.env.example` to `.env` and set `AWS_REGION` to the region you have those two models enabled
-in. The rest of the file already matches `docker-compose.yml` and the defaults in
-`src/fineprint/config.py`, so on a local machine there is nothing else to change.
+Copy `.env.example` to `.env` and set `AWS_REGION` to the region you have those three models enabled
+in. The rest of the file already matches `docker-compose.yml`, so on a local machine there is
+nothing else to change. It sets `CHUNK_SET=sections` and `RERANKER_PROVIDER=bedrock`, the best
+configuration on the part 2 scoreboard, which is not the default in `src/fineprint/config.py`.
 
 Credentials are the one thing `.env` cannot supply. The AWS SDK reads the credential chain from the
 process environment, not from this project's `.env`, so **export `AWS_PROFILE` in the shell you run
@@ -174,16 +176,19 @@ a run that cannot work costs nothing.
 docker compose up -d --wait                   # Postgres 16 with pgvector on localhost:5432
 uv run python scripts/download_handbook.py    # fetch and hash-verify the handbook into data/raw/
 uv run fineprint init-db                      # create the tables and indexes; safe to repeat
-uv run fineprint ingest                       # extract, chunk, embed, store; safe to repeat
+uv run fineprint ingest --chunk-set fixed-220w   # part 1's chunks, which the part 1 evals read
+uv run fineprint ingest --chunk-set sections     # the chunks the service reads; both are safe to repeat
 ```
 
 Now ask it things. `search` shows what retrieval finds with no model in the way, which is how a bad
 answer is diagnosed; `ask` adds the answer and the citation check.
 
 ```bash
+export CHUNK_SET=fixed-220w RERANKER_PROVIDER=none   # part 1's setup, for the comparison below
 uv run fineprint search "How much is the Part B premium in 2026?" --mode hybrid
 uv run fineprint search "How much is the Part B premium in 2026?" --mode vector
 uv run fineprint search "How much is the Part B premium in 2026?" --mode lexical
+unset CHUNK_SET RERANKER_PROVIDER                    # back to the values in .env
 
 uv run fineprint ask "How much is the Part B premium in 2026?"
 
