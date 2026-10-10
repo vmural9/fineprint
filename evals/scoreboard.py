@@ -18,7 +18,6 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 from evals import metrics
 from evals.golden import DEFAULT_GOLDEN_SET, GoldenItem, GoldenSetError, load_golden_set
@@ -257,7 +256,7 @@ TOOL_COLUMNS = ("Configuration", "Tool", "Questions that called it", "Calls", "E
 
 TOOL_NOTE = (
     "Only rows that offered the model the two tools are in this table, counted from the tool "
-    "calls stored with each answer. A call that errored is one the tool refused, for example "
+    "calls in each question's trace. A call that errored is one the tool refused, for example "
     "for an argument it does not know."
 )
 
@@ -535,28 +534,40 @@ def _serving_rows(results: Mapping[str, RunResult]) -> list[list[str]]:
 
 def _tool_rows(results: Mapping[str, RunResult]) -> list[list[str]]:
     """For each row that offered the tools, one line per tool: the questions that called it, the
-    calls, and the calls that errored, counted from the `tool_calls` stored with each answer.
+    calls, and the calls that errored.
 
-    Both tools are listed even when a run never called one, so an unused tool shows as zero
-    rather than as missing.
+    Counted from the `tool` calls in each question's trace, the same source as "tool calls per
+    query", so the two tables cannot disagree: a call's name is the tool's name, and a call with
+    an `error` is one that errored. Both tools are listed even when a run never called one, so
+    an unused tool shows as zero rather than as missing.
     """
     rows = []
     for name, result in _ordered(results):
         if not result.config.tools:
             continue
-        calls: dict[str, list[dict[str, Any]]] = {tool.name: [] for tool in TOOL_SPECS}
-        questions: dict[str, int] = dict.fromkeys(calls, 0)
+        calls: dict[str, int] = {tool.name: 0 for tool in TOOL_SPECS}
+        errors = dict(calls)
+        questions = dict(calls)
         for question in result.questions:
-            stored = (question.answer or {}).get("tool_calls") or []
-            for tool_name in {call["name"] for call in stored}:
+            tool_calls = [
+                call
+                for call in (question.trace.calls if question.trace else [])
+                if call.kind == "tool"
+            ]
+            for call in tool_calls:
+                calls[call.name] = calls.get(call.name, 0) + 1
+                errors[call.name] = errors.get(call.name, 0) + (call.error is not None)
+            for tool_name in {call.name for call in tool_calls}:
                 questions[tool_name] = questions.get(tool_name, 0) + 1
-            for call in stored:
-                calls.setdefault(call["name"], []).append(call)
         for tool_name in sorted(calls):
-            made = calls[tool_name]
-            errored = sum(call.get("error") is not None for call in made)
             rows.append(
-                [name, tool_name, str(questions.get(tool_name, 0)), str(len(made)), str(errored)]
+                [
+                    name,
+                    tool_name,
+                    str(questions[tool_name]),
+                    str(calls[tool_name]),
+                    str(errors[tool_name]),
+                ]
             )
     return rows
 

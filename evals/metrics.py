@@ -32,6 +32,7 @@ is `None`, because a mean over some of the questions would read as the cost of a
 import math
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Protocol
 
 from evals.golden import GoldenItem
@@ -277,12 +278,18 @@ def as_score(value: float | None) -> str:
 
 def as_money(value: float | None) -> str:
     """Dollars to four places, such as `$0.0464`, or the dash for no measurement."""
-    return NOT_MEASURED if value is None else f"${value:.4f}"
+    return NOT_MEASURED if value is None else f"${_half_up(value, '0.0001')}"
 
 
 def as_seconds(value_ms: float | None) -> str:
     """Milliseconds printed as seconds to one place, such as `12.4 s`, or the dash."""
-    return NOT_MEASURED if value_ms is None else f"{value_ms / 1000:.1f} s"
+    return NOT_MEASURED if value_ms is None else f"{_half_up(value_ms / 1000, '0.1')} s"
+
+
+def _half_up(value: float, places: str) -> Decimal:
+    """Round the number as written, half up: 0.95 is 1.0 to one place, not the 0.9 that the
+    float 0.95 (a hair under) would give with `format`. `places` is "0.1", "0.0001" and so on."""
+    return Decimal(repr(value)).quantize(Decimal(places), rounding=ROUND_HALF_UP)
 
 
 def _serving(rows: Sequence[QuestionScore]) -> Serving | None:
@@ -303,7 +310,10 @@ def _serving(rows: Sequence[QuestionScore]) -> Serving | None:
         max_latency_ms=max(latencies),
         generations_per_query=_calls(complete, "generation") / count,
         tool_calls_per_query=_calls(complete, "tool") / count,
-        fallbacks=sum(any(call.fallback for call in trace.calls) for trace in complete),
+        fallbacks=sum(
+            any(call.kind == "generation" and call.fallback for call in trace.calls)
+            for trace in complete
+        ),
     )
 
 

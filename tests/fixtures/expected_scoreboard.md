@@ -96,7 +96,7 @@ Only rows with a trace stored for at least one question are in this table, and a
 | agent | check_enrollment_window | 1 | 1 | 1 |
 | agent | lookup_cost_figure | 3 | 4 | 0 |
 
-Only rows that offered the model the two tools are in this table, counted from the tool calls stored with each answer. A call that errored is one the tool refused, for example for an argument it does not know.
+Only rows that offered the model the two tools are in this table, counted from the tool calls in each question's trace. A call that errored is one the tool refused, for example for an argument it does not know.
 
 ### What produced each row
 

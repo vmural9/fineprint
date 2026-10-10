@@ -527,11 +527,32 @@ def test_a_trace_costing_nothing_is_a_cost_not_a_missing_one():
     assert totals.fallbacks == 0
 
 
+def test_a_fallback_flag_on_a_call_that_is_not_a_generation_is_not_a_fallback():
+    # The column says a generation ran on the fallback model; a re-rank that degraded carries the
+    # flag too, and must not be counted.
+    rows = traced(
+        trace(1000.0, 0.01, call("rerank", fallback=True), call("generation")),
+        trace(1000.0, 0.01, call("generation", fallback=True), call("rerank", fallback=True)),
+    )
+
+    assert aggregate(rows).fallbacks == 1
+
+
 def test_money_is_four_decimals_and_seconds_one_and_a_missing_value_is_a_dash():
     assert as_money(0.0464) == "$0.0464"
     assert as_money(0.0) == "$0.0000"
     assert as_money(0.12345) == "$0.1235"
     assert as_money(None) == "—"
     assert as_seconds(12400.0) == "12.4 s"
-    assert as_seconds(950.0) == "0.9 s"
     assert as_seconds(None) == "—"
+
+
+def test_display_rounding_is_half_up_on_the_decimal_value_not_on_the_float():
+    # 0.95 and 0.00005 are a hair under in binary; a person reading them expects the round up.
+    assert as_seconds(950.0) == "1.0 s"
+    assert as_seconds(1049.9) == "1.0 s"
+    assert as_seconds(1050.0) == "1.1 s"
+    assert as_seconds(949.9) == "0.9 s"
+    assert as_money(0.00005) == "$0.0001"
+    assert as_money(0.00004999) == "$0.0000"
+    assert as_money(0.00015) == "$0.0002"

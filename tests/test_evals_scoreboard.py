@@ -403,7 +403,10 @@ def test_a_row_that_offered_the_tools_but_never_used_them_shows_zeros_not_nothin
     fixture_results,
 ):
     for question in fixture_results["agent"].questions:
-        question.answer["tool_calls"] = []
+        question.trace = replace(
+            question.trace,
+            calls=[call for call in question.trace.calls if call.kind != "tool"],
+        )
 
     document = render(fixture_results, STAMP, golden=GOLDEN)
 
@@ -411,8 +414,21 @@ def test_a_row_that_offered_the_tools_but_never_used_them_shows_zeros_not_nothin
     assert "| agent | lookup_cost_figure | 0 | 0 | 0 |" in document
 
 
-def test_a_question_that_failed_has_no_answer_and_no_tool_calls_to_count(fixture_results):
+def test_the_tool_calls_come_from_the_traces_so_a_failed_answer_does_not_change_them(
+    fixture_results,
+):
+    # q001 has no stored answer but its trace still shows the lookup it made, so the table and
+    # "tool calls per query" (1.25) agree. The answer's own tool_calls list is not read.
     fixture_results["agent"].questions[0].answer = None
+
+    document = render(fixture_results, STAMP, golden=GOLDEN)
+
+    assert "| agent | lookup_cost_figure | 3 | 4 | 0 |" in document
+    assert "| agent | $0.0500 | 8.0 s | 20.0 s | 20.0 s | 2.00 | 1.25 | 1 |" in document
+
+
+def test_a_question_without_a_trace_adds_no_tool_calls(fixture_results):
+    fixture_results["agent"].questions[0].trace = None
 
     document = render(fixture_results, STAMP, golden=GOLDEN)
 
