@@ -280,10 +280,11 @@ def test_the_provenance_table_shows_the_judge_model_and_a_dash_when_unscored(fix
     document = render(fixture_results, STAMP, golden=GOLDEN)
 
     assert (
-        "us.anthropic.claude-opus-5 | — | 1f4e9c2 | 20260921T031500Z_hybrid" in document
+        "us.anthropic.claude-opus-5 | — | — | — | 1f4e9c2 | 20260921T031500Z_hybrid" in document
     )  # hybrid: answered but never scored
     assert (
-        "us.anthropic.claude-sonnet-5 | 1f4e9c2 | 20260921T050000Z_hybrid+rerank" in document
+        "us.anthropic.claude-opus-5 | — | us.anthropic.claude-sonnet-5 | — | 1f4e9c2 | "
+        "20260921T050000Z_hybrid+rerank" in document
     )  # hybrid+rerank: scored by Sonnet 5
 
 
@@ -300,6 +301,144 @@ def test_an_unknown_configuration_sorts_alphabetically_after_the_known_ones(fixt
         < document.index("| lexical-only |")
         < document.index("| zzz-experimental |")
     )
+
+
+# --- part 3: cost, latency, tool calls, and what the traced run was made with ----
+#
+# The `agent` fixture is traced and offers the two tools. Its four questions, by hand:
+#   q001  8 s,  $0.04: embedding, 2 generations, 1 tool call
+#   q002 12 s,  $0.06: embedding, 3 generations (the primary timed out, so one ran on the
+#                      fallback model), 2 tool calls, one of which the tool refused
+#   q003  4 s,  $0.02: embedding, 1 generation (unanswerable; it still costs)
+#   q005 20 s,  $0.08: embedding, 2 generations, 2 tool calls
+# Mean cost (0.04 + 0.06 + 0.02 + 0.08) / 4 = $0.0500. Sorted latencies 4, 8, 12, 20 s: p50 is
+# rank 2 (8.0 s), p95 is rank ceil(0.95 * 4) = 4 (20.0 s), max 20.0 s. Generations (2 + 3 + 1 + 2)
+# / 4 = 2.00; tool calls (1 + 2 + 0 + 2) / 4 = 1.25; one question had a fallback generation.
+# Tool calls: lookup_cost_figure in q001, q002 and q005 (3 questions) made 1 + 1 + 2 = 4 calls,
+# none refused; check_enrollment_window in q002 only, 1 call, refused.
+
+
+def test_the_traced_row_shows_its_cost_per_query_and_p95_latency_in_the_headline(fixture_results):
+    document = render(fixture_results, STAMP, golden=GOLDEN)
+
+    assert "| agent | 66.7% | — | — | — | — | — | $0.0500 | 20.0 s | — | — |" in document
+
+
+def test_the_legend_says_where_cost_and_p95_come_from(fixture_results):
+    document = render(fixture_results, STAMP, golden=GOLDEN)
+
+    assert (
+        "Cost per query and p95 latency come from the trace stored with each question, at AWS "
+        "list prices in us-west-2, with p95 taken by nearest rank over the run's questions."
+    ) in document
+    assert "AWS list prices" in render_readme_block(fixture_results, STAMP)
+
+
+def test_the_agent_row_sits_right_after_the_reranked_rows_and_before_the_rest(fixture_results):
+    document = render(fixture_results, STAMP, golden=GOLDEN)
+
+    assert (
+        document.index("| hybrid+rerank |")
+        < document.index("| agent |")
+        < document.index("| lexical-only |")
+    )
+
+
+def test_the_cost_and_latency_table_lists_the_traced_row_only(fixture_results):
+    document = render(fixture_results, STAMP, golden=GOLDEN)
+
+    section = document.split("### Cost and latency")[1].split("### Tool calls")[0]
+    assert (
+        "| Configuration | Mean cost | p50 latency | p95 latency | Max latency | "
+        "Generations per query | Tool calls per query | Fallbacks |"
+    ) in section
+    assert "| agent | $0.0500 | 8.0 s | 20.0 s | 20.0 s | 2.00 | 1.25 | 1 |" in section
+    assert "| hybrid |" not in section
+    assert "lexical-only" not in section
+
+
+def test_the_cost_and_latency_table_is_left_out_while_no_row_has_a_trace():
+    untraced = {
+        name: result for name, result in latest_per_config(FIXTURES).items() if name != "agent"
+    }
+
+    document = render(untraced, STAMP, golden=GOLDEN)
+
+    assert "Cost and latency" not in document
+    assert "$" not in document
+
+
+def test_one_question_without_a_trace_turns_the_traced_rows_numbers_into_dashes(fixture_results):
+    fixture_results["agent"].questions[2].trace = None
+
+    document = render(fixture_results, STAMP, golden=GOLDEN)
+
+    assert "| agent | 66.7% | — | — | — | — | — | — | — | — | — |" in document
+    # The row had traces for three questions, so it stays in the table, with dashes.
+    assert "| agent | — | — | — | — | — | — | — |" in document
+
+
+def test_one_trace_without_a_cost_turns_the_traced_rows_numbers_into_dashes(fixture_results):
+    fixture_results["agent"].questions[1].trace = replace(
+        fixture_results["agent"].questions[1].trace, cost_usd=None
+    )
+
+    document = render(fixture_results, STAMP, golden=GOLDEN)
+
+    assert "| agent | 66.7% | — | — | — | — | — | — | — | — | — |" in document
+    assert "| agent | — | — | — | — | — | — | — |" in document
+
+
+def test_the_tool_calls_table_counts_questions_calls_and_refused_calls_per_tool(fixture_results):
+    document = render(fixture_results, STAMP, golden=GOLDEN)
+
+    section = document.split("### Tool calls")[1].split("### What produced each row")[0]
+    assert "| Configuration | Tool | Questions that called it | Calls | Errors |" in section
+    assert "| agent | check_enrollment_window | 1 | 1 | 1 |" in section
+    assert "| agent | lookup_cost_figure | 3 | 4 | 0 |" in section
+    assert "| hybrid |" not in section
+
+
+def test_a_row_that_offered_the_tools_but_never_used_them_shows_zeros_not_nothing(
+    fixture_results,
+):
+    for question in fixture_results["agent"].questions:
+        question.answer["tool_calls"] = []
+
+    document = render(fixture_results, STAMP, golden=GOLDEN)
+
+    assert "| agent | check_enrollment_window | 0 | 0 | 0 |" in document
+    assert "| agent | lookup_cost_figure | 0 | 0 | 0 |" in document
+
+
+def test_a_question_that_failed_has_no_answer_and_no_tool_calls_to_count(fixture_results):
+    fixture_results["agent"].questions[0].answer = None
+
+    document = render(fixture_results, STAMP, golden=GOLDEN)
+
+    assert "| agent | lookup_cost_figure | 2 | 3 | 0 |" in document
+
+
+def test_the_tool_calls_table_is_left_out_while_no_row_offered_the_tools():
+    untooled = {
+        name: result
+        for name, result in latest_per_config(FIXTURES).items()
+        if not result.config.tools
+    }
+
+    assert "Tool calls" not in render(untooled, STAMP, golden=GOLDEN)
+
+
+def test_the_provenance_table_names_the_fallback_model_and_the_tracing_provider(fixture_results):
+    document = render(fixture_results, STAMP, golden=GOLDEN)
+
+    assert (
+        "| agent | hybrid | sections | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | "
+        "us.anthropic.claude-opus-5 | us.anthropic.claude-sonnet-5 | — | langfuse | 1f4e9c2 | "
+        "20260921T060000Z_agent |"
+    ) in document
+    # An older run has neither: both cells are dashes.
+    assert "| Answer model | Fallback model | Judge model | Tracing | Commit | Run |" in document
 
 
 # --- the README block -------------------------------------------------------------
@@ -333,7 +472,7 @@ def test_the_command_writes_both_files(workspace, capsys):
     assert scoreboard.read_text(encoding="utf-8").startswith("# Scoreboard")
     assert "| hybrid | 66.7% |" in readme.read_text(encoding="utf-8")
     assert "Some prose below the block." in readme.read_text(encoding="utf-8")
-    assert "hybrid, hybrid+rerank, lexical-only" in capsys.readouterr().out
+    assert "hybrid, hybrid+rerank, agent, lexical-only" in capsys.readouterr().out
 
 
 def test_check_passes_right_after_generating(workspace):

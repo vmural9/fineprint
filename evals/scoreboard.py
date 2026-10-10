@@ -18,6 +18,7 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from evals import metrics
 from evals.golden import DEFAULT_GOLDEN_SET, GoldenItem, GoldenSetError, load_golden_set
@@ -31,6 +32,7 @@ from evals.results import (
     RunResult,
     latest_per_config,
 )
+from fineprint.tools import TOOL_SPECS
 
 SCOREBOARD_PATH = REPO_ROOT / "evals" / "scoreboard.md"
 README_PATH = REPO_ROOT / "README.md"
@@ -60,7 +62,9 @@ LEGEND = (
     f"`{NOT_MEASURED}` means not measured yet, never a stand-in value. Part 1 fills Page hit@5 "
     "and Manual pass; part 2 the four RAGAS columns; part 3 cost per query and p95 latency; "
     "part 4 the judge and adversarial columns. The four RAGAS columns are scored by the judge "
-    "model named in the provenance table and are LLM-judged estimates."
+    "model named in the provenance table and are LLM-judged estimates. Cost per query and p95 "
+    "latency come from the trace stored with each question, at AWS list prices in us-west-2, "
+    "with p95 taken by nearest rank over the run's questions."
 )
 
 # The order part 1 and part 2's configurations appear in. Anything else follows, alphabetically.
@@ -69,6 +73,7 @@ CONFIG_ORDER = (
     "hybrid+rerank",
     "sections",
     "sections+rerank",
+    "agent",
     "vector-only",
     "lexical-only",
 )
@@ -178,7 +183,7 @@ def _disagree(results: Mapping[str, RunResult]) -> bool:
 
 
 def _headline_rows(results: Mapping[str, RunResult]) -> list[list[str]]:
-    """One row per configuration: part 1's two columns, part 2's four, a dash for the rest."""
+    """One row per configuration: parts 1 to 3's columns, a dash for the rest."""
     rows = []
     for name, result in _ordered(results):
         totals = result.aggregates
@@ -191,7 +196,9 @@ def _headline_rows(results: Mapping[str, RunResult]) -> list[list[str]]:
                 metrics.as_score(totals.context_precision),
                 metrics.as_score(totals.faithfulness),
                 metrics.as_score(totals.answer_relevance),
-                *[NOT_MEASURED] * (len(HEADLINE_COLUMNS) - 7),
+                metrics.as_money(totals.cost_per_query_usd),
+                metrics.as_seconds(totals.p95_latency_ms),
+                *[NOT_MEASURED] * (len(HEADLINE_COLUMNS) - 9),
             ]
         )
     return rows
@@ -226,6 +233,34 @@ MOVEMENT_NOTE = (
     "appears here — that loss is what a lower `page_hit@5` on this row than on its twin shows."
 )
 
+SERVING_COLUMNS = (
+    "Configuration",
+    "Mean cost",
+    "p50 latency",
+    "p95 latency",
+    "Max latency",
+    "Generations per query",
+    "Tool calls per query",
+    "Fallbacks",
+)
+
+SERVING_NOTE = (
+    "Only rows with a trace stored for at least one question are in this table, and a cell is a "
+    "dash unless every question of the run has a trace with a cost. Mean cost counts every "
+    "question, unanswerable ones included. Latency is the wall time of the whole question, "
+    "measured on one machine on one day. A generation is one call to the answer model, so a "
+    "row that answers in a single call has 1.00; the agent's extra turns raise it. *Fallbacks* "
+    "is the number of questions where any generation ran on the fallback model."
+)
+
+TOOL_COLUMNS = ("Configuration", "Tool", "Questions that called it", "Calls", "Errors")
+
+TOOL_NOTE = (
+    "Only rows that offered the model the two tools are in this table, counted from the tool "
+    "calls stored with each answer. A call that errored is one the tool refused, for example "
+    "for an argument it does not know."
+)
+
 PROVENANCE_COLUMNS = (
     "Configuration",
     "Mode",
@@ -236,7 +271,9 @@ PROVENANCE_COLUMNS = (
     "Reranker",
     "Embedding model",
     "Answer model",
+    "Fallback model",
     "Judge model",
+    "Tracing",
     "Commit",
     "Run",
 )
@@ -320,6 +357,26 @@ def _detail_section(
             *_table(MOVEMENT_COLUMNS, movement),
             "",
             MOVEMENT_NOTE,
+        ]
+    serving = _serving_rows(results)
+    if serving:
+        lines += [
+            "",
+            "### Cost and latency",
+            "",
+            *_table(SERVING_COLUMNS, serving),
+            "",
+            SERVING_NOTE,
+        ]
+    tool_rows = _tool_rows(results)
+    if tool_rows:
+        lines += [
+            "",
+            "### Tool calls",
+            "",
+            *_table(TOOL_COLUMNS, tool_rows),
+            "",
+            TOOL_NOTE,
         ]
     lines += [
         "",
@@ -449,6 +506,61 @@ def _golden_by_id() -> dict[str, GoldenItem]:
     return {item.id: item for item in load_golden_set(DEFAULT_GOLDEN_SET)}
 
 
+def _serving_rows(results: Mapping[str, RunResult]) -> list[list[str]]:
+    """Cost and latency for each row that has any trace stored, and nothing for the others.
+
+    A row with traces for only some of its questions still appears, with dashes, so a partly
+    traced run is visible as partial rather than missing.
+    """
+    rows = []
+    for name, result in _ordered(results):
+        if not any(question.trace for question in result.questions):
+            continue
+        totals = result.aggregates
+        fallbacks = NOT_MEASURED if totals.fallbacks is None else str(totals.fallbacks)
+        rows.append(
+            [
+                name,
+                metrics.as_money(totals.cost_per_query_usd),
+                metrics.as_seconds(totals.p50_latency_ms),
+                metrics.as_seconds(totals.p95_latency_ms),
+                metrics.as_seconds(totals.max_latency_ms),
+                metrics.as_score(totals.generations_per_query),
+                metrics.as_score(totals.tool_calls_per_query),
+                fallbacks,
+            ]
+        )
+    return rows
+
+
+def _tool_rows(results: Mapping[str, RunResult]) -> list[list[str]]:
+    """For each row that offered the tools, one line per tool: the questions that called it, the
+    calls, and the calls that errored, counted from the `tool_calls` stored with each answer.
+
+    Both tools are listed even when a run never called one, so an unused tool shows as zero
+    rather than as missing.
+    """
+    rows = []
+    for name, result in _ordered(results):
+        if not result.config.tools:
+            continue
+        calls: dict[str, list[dict[str, Any]]] = {tool.name: [] for tool in TOOL_SPECS}
+        questions: dict[str, int] = dict.fromkeys(calls, 0)
+        for question in result.questions:
+            stored = (question.answer or {}).get("tool_calls") or []
+            for tool_name in {call["name"] for call in stored}:
+                questions[tool_name] = questions.get(tool_name, 0) + 1
+            for call in stored:
+                calls.setdefault(call["name"], []).append(call)
+        for tool_name in sorted(calls):
+            made = calls[tool_name]
+            errored = sum(call.get("error") is not None for call in made)
+            rows.append(
+                [name, tool_name, str(questions.get(tool_name, 0)), str(len(made)), str(errored)]
+            )
+    return rows
+
+
 def _run_rows(results: Mapping[str, RunResult]) -> list[list[str]]:
     """Where each row came from: the configuration, the models involved, the commit, and the
     results file."""
@@ -468,7 +580,9 @@ def _run_rows(results: Mapping[str, RunResult]) -> list[list[str]]:
                 config.reranker or NOT_MEASURED,
                 config.embedding_model,
                 config.llm_model or NOT_MEASURED,
+                config.fallback_model or NOT_MEASURED,
                 judge_model,
+                config.tracing or NOT_MEASURED,
                 f"{commit} (dirty)" if result.git.dirty else commit,
                 result.run_id,
             ]
