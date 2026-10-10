@@ -61,11 +61,13 @@ from evals.results import (
 )
 from fineprint.config import Settings
 from fineprint.db import connection_pool, describe_database
+from fineprint.pricing import PRICES
 from fineprint.providers.factory import get_reranker, get_tracer
 from fineprint.tracing import Tracer
 
 EXIT_OK = 0
 EXIT_FAILED = 1
+EXIT_REFUSED = 2
 
 
 class RunError(RuntimeError):
@@ -416,6 +418,35 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def preflight_problem(settings: Settings, *, retrieval_only: bool) -> str | None:
+    """Why this run would be spoiled before it starts, or None when it is fit to pay for.
+
+    A measured run must not inject faults: with `FAULT_INJECTION` left set, answers could be
+    written by the fallback model or fail outright, and the file would still say otherwise. And
+    every model the run calls needs a price in `PRICES`, or the cost and p95 columns of its row
+    come out blank after the money is spent.
+    """
+    if settings.fault_injection:
+        return (
+            f"FAULT_INJECTION={settings.fault_injection} is set; a measured run must not inject "
+            "faults. Unset it and start again."
+        )
+    models = {"EMBEDDING_MODEL": settings.embedding_model}
+    if settings.reranker_provider != "none":
+        models["RERANKER_MODEL"] = settings.reranker_model
+    if not retrieval_only:
+        models["LLM_MODEL"] = settings.llm_model
+        if settings.fallback_llm_model:
+            models["FALLBACK_LLM_MODEL"] = settings.fallback_llm_model
+    for variable, model in models.items():
+        if model not in PRICES:
+            return (
+                f"{variable}={model} has no entry in PRICES (src/fineprint/pricing.py), so the "
+                "run's cost would be blank. Add its price or use a priced model."
+            )
+    return None
+
+
 def select_questions(items: Sequence[GoldenItem], only: str) -> tuple[list[GoldenItem], list[str]]:
     """The golden-set questions named in `only` (comma-separated ids), in golden-set order.
 
@@ -443,6 +474,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     eval_config: EvalConfig = CONFIGS[args.config]
     settings = settings_for(eval_config, Settings())
     mode = eval_config.mode
+
+    problem = preflight_problem(settings, retrieval_only=args.retrieval_only)
+    if problem:
+        print(f"ERROR: {problem}", file=sys.stderr)
+        return EXIT_REFUSED
 
     try:
         items = load_golden_set(DEFAULT_GOLDEN_SET)
@@ -533,6 +569,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             rerank_candidates=settings.rerank_candidates if eval_config.reranker else None,
             tools=eval_config.tools,
             tools_today=today.isoformat() if eval_config.tools else None,
+            agent_max_tool_turns=settings.agent_max_tool_turns if eval_config.tools else None,
             fallback_model=(settings.fallback_llm_model or None) if answering else None,
             tracing=settings.tracing_provider,
             langfuse_base_url=(
