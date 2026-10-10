@@ -138,18 +138,38 @@ def passages(row: QuestionResult) -> list[str]:
     return texts
 
 
+def tool_contexts(row: QuestionResult) -> list[str]:
+    """What the agent's tools handed the model, as extra passages: the handbook sentence behind
+    each tool result that came back without an error.
+
+    The model saw these sentences when it wrote the answer, so recall, precision and faithfulness
+    count them with the retrieved passages (decision T7). A row whose answer holds no tool calls
+    has none, and neither does a call that failed or whose result quotes nothing.
+    """
+    calls = (row.answer or {}).get("tool_calls") or []
+    return [
+        call["source_text"]
+        for call in calls
+        if call.get("error") is None and call.get("source_text")
+    ]
+
+
 def score_question(
     row: QuestionResult, item: GoldenItem, judge: ChatModel, embedder: Embedder
 ) -> Scored:
     """Score one question on every metric that applies to it.
 
-    Whatever the judge or the embedder raises is left to the caller, which records it.
+    The passages the judge reads are the retrieved chunks, best first, and then the source text of
+    each tool result; an answer that stores `tool_calls` gets `tool_contexts` in the detail, the
+    number added. Every other row is scored and recorded exactly as before. Whatever
+    the judge or the embedder raises is left to the caller, which records it.
     """
     if not item.answerable:
         return skipped(UNANSWERABLE)
     if row.error is not None and not row.retrieved:
         return skipped(RETRIEVAL_FAILED)
-    texts = passages(row)
+    extra = tool_contexts(row)
+    texts = [*passages(row), *extra]
     results: dict[str, MetricResult] = {
         "context_recall": context_recall(row.question, item.expected_answer, texts, judge),
         "context_precision": context_precision(row.question, item.expected_answer, texts, judge),
@@ -159,6 +179,8 @@ def score_question(
         results["faithfulness"] = faithfulness(row.question, answer, texts, judge)
         results["answer_relevance"] = answer_relevance(row.question, answer, judge, embedder)
     detail: dict[str, Any] = {name: result.detail for name, result in results.items()}
+    if row.answer is not None and "tool_calls" in row.answer:
+        detail["tool_contexts"] = len(extra)  # also when 0: the agent ran and added nothing
     detail["judge_input_tokens"] = sum(result.input_tokens for result in results.values())
     detail["judge_output_tokens"] = sum(result.output_tokens for result in results.values())
     values = {name: results[name].value if name in results else None for name in METRICS}
@@ -418,7 +440,10 @@ def explanation(row: QuestionResult, scored: Scored, source: str) -> list[str]:
         values = scored.values
         lines += _recall_section(detail["context_recall"], values["context_recall"])
         lines += _precision_section(
-            detail["context_precision"], values["context_precision"], ranked(row)
+            detail["context_precision"],
+            values["context_precision"],
+            ranked(row),
+            tool_contexts(row),
         )
         lines += _faithfulness_section(detail.get("faithfulness"), values["faithfulness"])
         lines += _relevance_section(detail.get("answer_relevance"), values["answer_relevance"])
@@ -437,9 +462,15 @@ def _recall_section(entry: dict[str, Any], value: float | None) -> list[str]:
 
 
 def _precision_section(
-    entry: dict[str, Any], value: float | None, chunks: list[RetrievedChunk]
+    entry: dict[str, Any],
+    value: float | None,
+    chunks: list[RetrievedChunk],
+    tool_texts: list[str],
 ) -> list[str]:
-    """Each passage in rank order, where it sits, and whether it helps reach the answer."""
+    """Each passage in rank order, where it sits, and whether it helps reach the answer.
+
+    The passages after the retrieved chunks are the agent's tool results, shown by their text.
+    """
     lines = _heading(
         "CONTEXT PRECISION",
         value,
@@ -449,7 +480,11 @@ def _precision_section(
         lines.append(f"{INDENT}No passages were retrieved, which scores 0.")
     for passage in entry["passages"]:
         verdict = "useful" if passage["useful"] else "NOT useful"
-        where = _passage_line(chunks[passage["rank"] - 1])
+        position = passage["rank"] - 1
+        if position < len(chunks):
+            where = _passage_line(chunks[position])
+        else:
+            where = _tool_line(tool_texts[position - len(chunks)])
         lines += _judged(passage["rank"], verdict, where, passage["reason"])
     return lines
 
@@ -525,6 +560,12 @@ def _passage_line(chunk: RetrievedChunk) -> str:
     pages = f"p.{first}" if first == last else f"pp.{first}-{last}"
     room = TEXT_WIDTH - len(pages) - 3  # a space and two quote marks
     return f'{pages} "{textwrap.shorten(chunk.text or "", width=room, placeholder=" …")}"'
+
+
+def _tool_line(text: str) -> str:
+    """How a tool result's handbook sentence begins, on one line."""
+    room = TEXT_WIDTH - len("tool ") - 2
+    return f'tool "{textwrap.shorten(text, width=room, placeholder=" …")}"'
 
 
 def _wrap(text: str, indent: str = INDENT) -> str:
