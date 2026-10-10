@@ -6,6 +6,8 @@ Prices come from a small table of this file's own, so a change to the real price
 breaks them.
 """
 
+import logging
+from contextlib import contextmanager
 from typing import Any
 
 import pytest
@@ -15,7 +17,14 @@ from fineprint.answer import DraftAnswer, answer_question
 from fineprint.config import Settings
 from fineprint.pricing import Price
 from fineprint.providers import factory
-from fineprint.providers.base import LLMResult, ToolCall, ToolSpec, ToolTurn
+from fineprint.providers.base import (
+    LLMResult,
+    ProviderTimeoutError,
+    ToolCall,
+    ToolSpec,
+    ToolTurn,
+)
+from fineprint.providers.bedrock_chat import InvalidToolInputError
 from fineprint.retrieval import RetrievedChunk, Retriever
 from fineprint.tracing import (
     TracedChatModel,
@@ -373,15 +382,57 @@ def test_a_failed_call_records_the_error_and_raises_it_again(tracer: Tracer, sin
     assert sink.traces[0].fields["error"] == "RuntimeError: the model is down"
 
 
-def test_a_failed_call_does_not_make_the_trace_cost_unknown(tracer: Tracer):
-    embedder = TracedEmbedder(PricedEmbedder(), tracer, prices=PRICES)
-    chat = TracedChatModel(ExplodingChat(), tracer, prices=PRICES)
+class FailingChat:
+    model = "fake-chat-model"
 
-    with pytest.raises(RuntimeError), tracer.trace("ask") as trace:
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+
+    def complete_structured(self, system, user, schema):
+        raise self.error
+
+
+def trace_with_embedding_then_failure(tracer: Tracer, error: Exception):
+    """Embed the question (cost 9 tokens at $0.5 per million), then fail the chat call."""
+    embedder = TracedEmbedder(PricedEmbedder(), tracer, prices=PRICES)
+    chat = TracedChatModel(FailingChat(error), tracer, prices=PRICES)
+    with pytest.raises(type(error)), tracer.trace("ask") as trace:
         embedder.embed_query(QUESTION)
         chat.complete_structured("system", "user", DraftAnswer)
+    return trace.record
 
-    assert trace.record.cost_usd == pytest.approx(9 * 0.5 / 1_000_000)
+
+def test_a_failure_that_carries_usage_is_priced_from_it(tracer: Tracer, sink: RecordingSink):
+    error = InvalidToolInputError("did not validate")
+    error.input_tokens, error.output_tokens = 1800, 220
+
+    record = trace_with_embedding_then_failure(tracer, error)
+
+    chat_call = record.calls[-1]
+    assert chat_call.error == "InvalidToolInputError: did not validate"
+    assert (chat_call.input_tokens, chat_call.output_tokens) == (1800, 220)
+    assert chat_call.cost_usd == pytest.approx(1800e-6 + 220 * 2e-6)
+    assert record.cost_usd == pytest.approx(9 * 0.5e-6 + 1800e-6 + 220 * 2e-6)
+    generation = sink.observations[-1]
+    assert generation.fields["error"] == "InvalidToolInputError: did not validate"
+    assert generation.fields["cost"].total_usd == pytest.approx(1800e-6 + 220 * 2e-6)
+
+
+def test_a_provider_failure_counts_as_zero_cost(tracer: Tracer):
+    # The provider never produced a reply, so nothing knowable was billed.
+    record = trace_with_embedding_then_failure(tracer, ProviderTimeoutError("timed out"))
+
+    chat_call = record.calls[-1]
+    assert chat_call.error == "ProviderTimeoutError: timed out"
+    assert chat_call.cost_usd == 0.0
+    assert record.cost_usd == pytest.approx(9 * 0.5e-6)
+
+
+def test_any_other_failure_without_usage_makes_the_trace_cost_unknown(tracer: Tracer):
+    record = trace_with_embedding_then_failure(tracer, RuntimeError("something odd"))
+
+    assert record.calls[-1].cost_usd is None
+    assert record.cost_usd is None
 
 
 def test_a_span_left_open_by_an_exception_is_still_recorded(tracer: Tracer):
@@ -633,3 +684,84 @@ def test_no_reranker_stays_none_even_with_a_tracer():
     assert (
         factory.get_reranker(Settings(reranker_provider="none", _env_file=None), Tracer()) is None
     )
+
+
+# --- a sink that fails must not break a request -----------------------------------------------
+
+
+class BrokenSink:
+    """A sink whose every method raises, as a Langfuse outage or a bug in the SDK might."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def _fail(self, *args, **kwargs):
+        self.calls += 1
+        raise ConnectionError("the tracing service is down")
+
+    @contextmanager
+    def trace(self, *args, **kwargs):
+        self._fail()
+        yield
+
+    @contextmanager
+    def observation(self, *args, **kwargs):
+        self._fail()
+        yield
+
+    current_trace_id = trace_url = flush = shutdown = _fail
+
+
+def test_a_sink_that_always_fails_changes_nothing_about_the_answer(caplog):
+    sink = BrokenSink()
+    tracer = Tracer(sink)
+    chat = TracedChatModel(FakeChatModel(DRAFT), tracer, prices=PRICES)
+
+    with caplog.at_level(logging.WARNING, logger="fineprint.tracing"):
+        response = answer_question(QUESTION, ListRetriever(), chat, tracer=tracer)
+        tracer.flush()
+        tracer.shutdown()
+        url = tracer.trace_url("abc")
+
+    assert response.answer == DRAFT.answer
+    assert response.trace_id is None
+    assert response.cost_usd == pytest.approx(0.00114)
+    assert url is None
+    assert sink.calls > 0
+    # Each kind of failure is logged once, not once per call.
+    messages = [record.getMessage() for record in caplog.records]
+    assert len(messages) == len(set(messages))
+    assert messages and all("the tracing service is down" in message for message in messages)
+
+
+class SinkFailingOnExit(RecordingSink):
+    """Opens fine and raises while closing, the way a failed flush at the end of a span would."""
+
+    @contextmanager
+    def observation(self, *args, **kwargs):
+        with super().observation(*args, **kwargs) as observation:
+            yield observation
+        raise ConnectionError("could not send the span")
+
+
+def test_a_sink_that_fails_on_exit_does_not_hide_the_errors_of_the_body():
+    tracer = Tracer(SinkFailingOnExit())
+
+    with (
+        pytest.raises(ValueError, match="bad figure"),
+        tracer.trace("search") as trace,
+        tracer.span("tool", "lookup"),
+    ):
+        raise ValueError("bad figure")
+
+    assert trace.record.calls[0].error == "ValueError: bad figure"
+
+
+def test_a_sink_that_fails_on_exit_does_not_fail_a_call_that_worked():
+    tracer = Tracer(SinkFailingOnExit())
+    chat = TracedChatModel(FakeChatModel(DRAFT), tracer, prices=PRICES)
+
+    with tracer.trace("ask") as trace:
+        chat.complete_structured("system", "user", DraftAnswer)
+
+    assert trace.record.cost_usd == pytest.approx(0.00114)

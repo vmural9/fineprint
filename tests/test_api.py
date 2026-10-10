@@ -293,6 +293,23 @@ def test_ask_reports_its_trace_and_what_the_question_cost(client: TestClient, si
     assert [child.kind for child in trace.children] == ["generation"]
 
 
+def test_ask_still_answers_when_the_tracing_sink_fails(client: TestClient):
+    from tests.test_tracing import BrokenSink
+
+    tracer = Tracer(BrokenSink())
+    override(get_tracer, tracer)
+    override(get_chat, TracedChatModel(FakeChatModel(DRAFT), tracer, prices=FAKE_PRICES))
+
+    asked = client.post("/ask", json={"question": "How much is the Part B premium in 2026?"})
+    searched = client.post("/search", json={"query": "Part B premium"})
+
+    assert asked.status_code == 200
+    assert asked.json()["answer"] == DRAFT.answer
+    assert asked.json()["trace_id"] is None
+    assert asked.json()["cost_usd"] == pytest.approx(0.00114)
+    assert searched.status_code == 200
+
+
 def test_ask_passes_top_k_to_the_retriever(client: TestClient):
     retriever = FakeRetriever()
     override(get_retriever, retriever)

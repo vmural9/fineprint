@@ -61,7 +61,15 @@ _UNAVAILABLE_STATUSES = {424, 429}
 
 
 class ChatModelError(RuntimeError):
-    """The model did not give back an answer this service can use."""
+    """The model did not give back an answer this service can use.
+
+    Bedrock bills the tokens of a reply even when it is then refused, cut off or unusable, so
+    these errors carry the tokens used, summed over every request made so far. They are None
+    when the error was raised without a count.
+    """
+
+    input_tokens: int | None = None
+    output_tokens: int | None = None
 
 
 class ModelRefusedError(ChatModelError):
@@ -185,8 +193,12 @@ class BedrockChatModel:
 
             # Why the answer stopped comes before what the answer says: a refused or
             # truncated response still carries content, and it must not be trusted.
-            self._check_stop_reason(response)
-            calls = self._tool_calls(response)
+            try:
+                self._check_stop_reason(response)
+                calls = self._tool_calls(response)
+            except ChatModelError as error:
+                error.input_tokens, error.output_tokens = input_tokens, output_tokens
+                raise
 
             try:
                 parsed = self._first_valid(calls, schema)
@@ -207,9 +219,11 @@ class BedrockChatModel:
                 latency_ms=(time.perf_counter() - started) * 1000,
             )
 
-        raise InvalidToolInputError(
+        error = InvalidToolInputError(
             f"{self.model} twice returned a {schema.__name__} that did not validate:\n{failure}"
         )
+        error.input_tokens, error.output_tokens = input_tokens, output_tokens
+        raise error
 
     def _check_stop_reason(self, response: Any) -> None:
         """Raise when the model stopped for a reason that makes its content unusable."""
