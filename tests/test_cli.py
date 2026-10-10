@@ -20,10 +20,16 @@ from fineprint.editions import EDITIONS
 from fineprint.ingest import IngestError, IngestSummary, WordStats, store
 from fineprint.pdf import Page
 from fineprint.pricing import Price
-from fineprint.providers.base import ProviderUnavailableError
+from fineprint.providers.base import ProviderUnavailableError, ToolCall
 from fineprint.retrieval import EditionNotIngestedError, RetrievedChunk
 from fineprint.tracing import TracedChatModel, Tracer
-from tests.fakes import FakeChatModel, FakeEmbedder, RecordingSink
+from tests.fakes import (
+    FakeChatModel,
+    FakeEmbedder,
+    FlakyChatModel,
+    RecordingSink,
+    ScriptedToolModel,
+)
 
 FAKE_DATABASE_URL = "postgresql://fineprint:hunter2@db.example:5432/handbook"
 
@@ -554,6 +560,104 @@ def test_ask_prints_an_abstention_plainly(offline_service, capsys):
     printed = capsys.readouterr().out.lower()
     assert "no" in printed
     assert "formulary" in printed
+
+
+# --- agent ------------------------------------------------------------------------------
+
+PREMIUM_LOOKUP = ToolCall(
+    id="toolu_premium", name="lookup_cost_figure", arguments={"figure": "part_b_standard_premium"}
+)
+RECORD = ToolCall(id="toolu_answer", name="record_answer", arguments=PREMIUM_DRAFT.model_dump())
+AGENT_PRICES = {
+    "scripted-tool-model": replace(FAKE_PRICES["fake-chat-model"], model="scripted-tool-model")
+}
+
+
+@pytest.fixture
+def tool_model(offline_service, monkeypatch) -> SimpleNamespace:
+    """Answer `fineprint agent` from a script; `tool_model.script` is set by each test."""
+    holder = SimpleNamespace(script=[[PREMIUM_LOOKUP], [RECORD]], model=None)
+
+    def build(settings, tracer=None) -> TracedChatModel:
+        holder.model = ScriptedToolModel(holder.script)
+        return TracedChatModel(holder.model, tracer, prices=AGENT_PRICES)
+
+    monkeypatch.setattr("fineprint.cli.get_chat_model", build)
+    return holder
+
+
+def test_agent_prints_each_tool_call_before_the_answer_then_the_cost_and_trace(
+    tool_model, offline_service, capsys
+):
+    exit_code = main(["agent", "How much is the Part B premium in 2026?"])
+
+    printed = capsys.readouterr().out
+    assert exit_code == 0
+    assert "lookup_cost_figure" in printed
+    assert 'figure="part_b_standard_premium"' in printed
+    assert "amount: 202.90" in printed
+    assert "page: 23" in printed
+    assert printed.index("lookup_cost_figure") < printed.index(PREMIUM_DRAFT.answer)
+    assert "2 model turns" in printed
+    assert "page 23" in printed and "quote verified" in printed
+    assert "cost: $0.0023" in printed
+    assert "fallback: no" in printed
+    assert "trace: trace-from-the-sink" in printed
+    (trace,) = offline_service.sink.traces
+    assert (trace.name, trace.tags) == ("agent", ["cli"])
+    assert offline_service.sink.shutdowns == 1
+
+
+def test_agent_prints_a_tool_error_as_an_error(tool_model, capsys):
+    leap_day = ToolCall(
+        id="toolu_leap", name="check_enrollment_window", arguments={"birth_date": "1960-02-29"}
+    )
+    tool_model.script = [[leap_day], [RECORD]]
+
+    main(["agent", "I was born on February 29, 1960. When can I sign up?"])
+
+    printed = capsys.readouterr().out
+    assert 'check_enrollment_window(birth_date="1960-02-29")' in printed
+    assert "error: The handbook does not say when someone born on February 29" in printed
+
+
+def test_agent_passes_the_date_the_top_k_and_the_turn_budget(
+    tool_model, offline_service, monkeypatch, capsys
+):
+    enrollment = ToolCall(
+        id="toolu_enrollment",
+        name="check_enrollment_window",
+        arguments={"birth_date": "1961-05-10"},
+    )
+    tool_model.script = [[enrollment], [RECORD]]
+    monkeypatch.setenv("AGENT_MAX_TOOL_TURNS", "1")
+
+    main(["agent", "When can I sign up?", "--as-of", "2026-03-01", "--top-k", "3"])
+
+    printed = capsys.readouterr().out
+    assert "as_of: 2026-03-01" in printed
+    assert offline_service.retriever.calls == [("When can I sign up?", "hybrid", 3)]
+    assert [call.force_tool for call in tool_model.model.calls] == [None, "record_answer"]
+
+
+def test_agent_refuses_a_date_it_cannot_read(tool_model, capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(["agent", "When can I sign up?", "--as-of", "next Tuesday"])
+
+    assert excinfo.value.code == 2
+
+
+def test_agent_reports_an_unavailable_model_in_one_line(offline_service, monkeypatch, capsys):
+    monkeypatch.setattr(
+        "fineprint.cli.get_chat_model",
+        lambda settings, tracer=None: FlakyChatModel([ProviderUnavailableError("throttled")]),
+    )
+
+    exit_code = main(["agent", "How much is the Part B premium?"])
+
+    assert exit_code == 1
+    assert "model provider unavailable: throttled" in capsys.readouterr().err
+    assert offline_service.sink.shutdowns == 1
 
 
 def test_serve_runs_uvicorn_on_the_host_and_port_it_is_given(monkeypatch, no_dot_env, capsys):

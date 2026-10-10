@@ -2,28 +2,32 @@
 
 One subcommand per thing the service can do: `init-db` and `ingest` prepare the database,
 `chunks` shows how a chunk set cut a page, `search` shows what retrieval finds, `ask` answers a
-question from it, and `serve` puts the same two operations behind HTTP.
+question from it, `agent` answers it with the handbook tools as well, and `serve` puts the same
+operations behind HTTP.
 
 Each subcommand reads `Settings` itself, so a flag that is left off falls back to the
 configured value and the environment stays the single place configuration lives.
 
-`search` and `ask` print for a person reading a terminal, not for a program: the text is
+`search`, `ask` and `agent` print for a person reading a terminal, not for a program: the text is
 wrapped, the columns line up, and a quote the service could not find in its chunk says so
 in words. Anything that wants the data should call the API instead.
 """
 
 import argparse
+import json
 import shutil
 import sys
 import textwrap
 import time
 from collections.abc import Sequence
-from typing import NamedTuple
+from datetime import date
+from typing import Any, NamedTuple
 
 import psycopg
 import uvicorn
 from psycopg_pool import ConnectionPool, PoolTimeout
 
+from fineprint.agent import AgentResponse, ToolCallRecord, answer_with_tools
 from fineprint.answer import AnswerResponse, answer_question
 from fineprint.chunking import CHUNKERS
 from fineprint.config import Settings
@@ -301,6 +305,87 @@ def run_ask(args: argparse.Namespace) -> int:
         tracer.shutdown()
 
 
+def format_arguments(arguments: dict[str, Any]) -> str:
+    """A tool call's arguments as they would be written in a call: `figure="part_b_deductible"`."""
+    return ", ".join(
+        f"{name}={json.dumps(value, ensure_ascii=False)}" for name, value in arguments.items()
+    )
+
+
+def print_fields(value: Any, indent: str, width: int) -> None:
+    """A tool's result as indented `name: value` lines, nested objects one level further in."""
+    for name, field in value.items():
+        if isinstance(field, dict):
+            print(f"{indent}{name}:")
+            print_fields(field, indent + "  ", width)
+            continue
+        shown = json.dumps(field, ensure_ascii=False) if isinstance(field, list) else field
+        shown = "null" if shown is None else str(shown)
+        print(
+            textwrap.fill(
+                f"{name}: {shown}",
+                width=width,
+                initial_indent=indent,
+                subsequent_indent=indent + "  ",
+            )
+        )
+
+
+def print_tool_calls(calls: Sequence[ToolCallRecord], turns: int) -> None:
+    """Each tool call the model made, with its arguments and what it got back."""
+    width = text_width()
+    print()
+    if not calls:
+        print(f"tool calls: none, in {turns} model turn{'s' if turns != 1 else ''}")
+        return
+    print(f"tool calls ({len(calls)}), in {turns} model turns:")
+    for number, call in enumerate(calls, start=1):
+        print(f" {number:>2}. {call.name}({format_arguments(call.arguments)})")
+        if call.error is not None:
+            print(
+                textwrap.fill(
+                    f"error: {call.error}",
+                    width=width,
+                    initial_indent=" " * 5,
+                    subsequent_indent=" " * 7,
+                )
+            )
+        else:
+            print_fields(call.output or {}, " " * 5, width)
+
+
+def run_agent(args: argparse.Namespace) -> int:
+    """Answer a question with the handbook tools, and show every tool call it made."""
+    settings = Settings()
+    top_k = settings.retrieval_top_k if args.top_k is None else args.top_k
+    tracer = get_tracer(settings)
+
+    try:
+        try:
+            with (
+                connection_pool(settings.database_url) as pool,
+                tracer.trace("agent", input=args.question, tags=["cli"]),
+            ):
+                answered: AgentResponse = answer_with_tools(
+                    args.question,
+                    open_retriever(settings, pool, tracer),
+                    get_chat_model(settings, tracer),  # type: ignore[arg-type]
+                    top_k=top_k,
+                    today=args.as_of,
+                    max_tool_turns=settings.agent_max_tool_turns,
+                    tracer=tracer,
+                )
+        except Exception as error:
+            return report_failure(error, settings)
+
+        print(f'question: "{args.question}"')
+        print_tool_calls(answered.tool_calls, answered.turns)
+        print_answer(answered, tracer.trace_url(answered.trace_id) if answered.trace_id else None)
+        return 0
+    finally:
+        tracer.shutdown()
+
+
 def run_serve(args: argparse.Namespace) -> int:
     """Serve the API with uvicorn until interrupted."""
     settings = Settings()
@@ -508,11 +593,36 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ask_command.set_defaults(run=run_ask)
 
+    agent_command = subcommands.add_parser(
+        "agent",
+        help="answer a Medicare question, letting the model look up figures and dates with tools",
+        description=(
+            "Answer like ask, but let Claude call two tools first: one returns a 2026 dollar "
+            "amount exactly as the handbook prints it, the other works out enrollment dates "
+            "from a birth date by the handbook's rules. Every tool call is printed, with its "
+            "arguments and its result or error, before the answer. Each model turn is a call "
+            "to AWS Bedrock; AGENT_MAX_TOOL_TURNS caps the turns spent calling tools."
+        ),
+    )
+    agent_command.add_argument("question", help="the question, in quotes")
+    agent_command.add_argument(
+        "--as-of",
+        type=date.fromisoformat,
+        metavar="YYYY-MM-DD",
+        help="the date enrollment windows are checked against (default: today)",
+    )
+    agent_command.add_argument(
+        "--top-k",
+        type=int,
+        help="how many chunks to answer from (default: RETRIEVAL_TOP_K)",
+    )
+    agent_command.set_defaults(run=run_agent)
+
     serve_command = subcommands.add_parser(
         "serve",
         help="run the HTTP API",
         description=(
-            "Serve /search, /ask and /healthz with uvicorn. The connection pool and the "
+            "Serve /search, /ask, /agent and /healthz with uvicorn. The connection pool and the "
             "models are built once at startup and shared by every request."
         ),
     )
