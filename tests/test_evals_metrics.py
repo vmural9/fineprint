@@ -11,15 +11,19 @@ from evals.metrics import (
     QuestionMetrics,
     abstention_correct,
     aggregate,
+    as_money,
+    as_seconds,
     cited_page_hit,
     covers,
     found_expected_pages,
     mean,
     page_hit,
     page_recall,
+    percentile,
     reciprocal_rank,
     score_question,
 )
+from fineprint.tracing import CallRecord, TraceRecord
 
 
 @dataclass(frozen=True)
@@ -47,6 +51,7 @@ class Scored:
     answered: bool
     metrics: QuestionMetrics
     verdict: str | None = None
+    trace: TraceRecord | None = None
 
 
 def golden(
@@ -374,3 +379,159 @@ def test_aggregate_leaves_the_four_ragas_metrics_none_when_none_are_present():
         totals.faithfulness,
         totals.answer_relevance,
     ) == (None, None, None, None)
+
+
+# --- part 3: percentiles, cost and latency ----------------------------------------
+
+
+def call(kind: str, *, fallback: bool = False) -> CallRecord:
+    """One finished call of the given kind; the aggregates only read its kind and fallback flag."""
+    return CallRecord(
+        kind=kind,
+        name=kind,
+        model=None,
+        input_tokens=None,
+        output_tokens=None,
+        units=None,
+        latency_ms=1.0,
+        cost_usd=None,
+        error=None,
+        fallback=fallback,
+    )
+
+
+def trace(latency_ms: float, cost_usd: float | None, *calls: CallRecord) -> TraceRecord:
+    return TraceRecord(
+        trace_id=None, name="ask", latency_ms=latency_ms, cost_usd=cost_usd, calls=list(calls)
+    )
+
+
+def traced(*traces: TraceRecord | None) -> list[Scored]:
+    """One answered question per trace."""
+    return [
+        Scored(answerable=True, answered=True, metrics=QuestionMetrics(), trace=item)
+        for item in traces
+    ]
+
+
+def test_the_95th_percentile_of_forty_values_is_the_38th_smallest():
+    # Rank = ceil(95 / 100 * 40) = 38, so of 100, 200, ..., 4000 (shuffled by reversing) it is 3800.
+    values = [float(step * 100) for step in range(40, 0, -1)]
+
+    assert percentile(values, 95) == 3800.0
+
+
+def test_the_median_of_forty_values_is_the_20th_smallest_not_the_mean_of_two():
+    values = [float(step * 100) for step in range(1, 41)]
+
+    assert percentile(values, 50) == 2000.0
+
+
+def test_a_percentile_is_always_one_of_the_values_and_the_ends_are_the_smallest_and_largest():
+    values = [30.0, 10.0, 20.0]
+
+    assert percentile(values, 100) == 30.0
+    assert percentile(values, 0) == 10.0
+    assert percentile(values, 95) == 30.0  # rank ceil(2.85) = 3
+
+
+def test_the_percentile_of_a_single_value_is_that_value():
+    assert percentile([7.5], 95) == 7.5
+    assert percentile([7.5], 50) == 7.5
+
+
+def test_the_two_slowest_of_forty_calls_do_not_move_the_95th_percentile_but_three_do():
+    # Ranks 39 and 40 sit above the 38th value; a third slow call pushes into rank 38.
+    two_slow = [1000.0] * 38 + [90000.0, 90000.0]
+    three_slow = [1000.0] * 37 + [90000.0] * 3
+
+    assert percentile(two_slow, 95) == 1000.0
+    assert percentile(three_slow, 95) == 90000.0
+
+
+def test_a_percentile_of_nothing_is_refused_and_so_is_a_p_outside_zero_to_a_hundred():
+    with pytest.raises(ValueError):
+        percentile([], 95)
+    with pytest.raises(ValueError):
+        percentile([1.0], 101)
+
+
+def test_the_cost_and_latency_aggregates_are_worked_out_from_the_traces():
+    # Costs 0.01, 0.02, 0.03, 0.04 average 0.025. Latencies 1000, 2000, 3000, 10000 ms: p50 is
+    # rank 2 (2000), p95 is rank ceil(3.8) = 4 (10000), max 10000. Generations 1, 2, 1, 2 average
+    # 1.5 (embedding and rerank calls are not generations). Tool calls 0, 1, 0, 3 average 1.0.
+    # Fallbacks: the second question has one fallback generation, the fourth has two; two
+    # questions, not three calls.
+    rows = traced(
+        trace(1000.0, 0.01, call("embedding"), call("generation")),
+        trace(2000.0, 0.02, call("generation", fallback=True), call("generation"), call("tool")),
+        trace(3000.0, 0.03, call("rerank"), call("generation")),
+        trace(
+            10000.0,
+            0.04,
+            call("generation", fallback=True),
+            call("generation", fallback=True),
+            call("tool"),
+            call("tool"),
+            call("tool"),
+        ),
+    )
+
+    totals = aggregate(rows)
+
+    assert totals.cost_per_query_usd == pytest.approx(0.025)
+    assert totals.p50_latency_ms == 2000.0
+    assert totals.p95_latency_ms == 10000.0
+    assert totals.max_latency_ms == 10000.0
+    assert totals.generations_per_query == 1.5
+    assert totals.tool_calls_per_query == 1.0
+    assert totals.fallbacks == 2
+
+
+def test_unanswerable_questions_count_towards_the_cost_per_query():
+    rows = traced(trace(1000.0, 0.03), trace(1000.0, 0.01))
+    rows[1] = Scored(
+        answerable=False,
+        answered=True,
+        metrics=QuestionMetrics(),
+        trace=trace(1000.0, 0.01),
+    )
+
+    assert aggregate(rows).cost_per_query_usd == pytest.approx(0.02)
+
+
+def test_one_question_without_a_trace_makes_every_cost_and_latency_aggregate_none():
+    totals = aggregate(traced(trace(1000.0, 0.01), None, trace(3000.0, 0.03)))
+
+    assert totals.cost_per_query_usd is None
+    assert totals.p50_latency_ms is None
+    assert totals.p95_latency_ms is None
+    assert totals.max_latency_ms is None
+    assert totals.generations_per_query is None
+    assert totals.tool_calls_per_query is None
+    assert totals.fallbacks is None
+
+
+def test_one_trace_without_a_cost_makes_every_cost_and_latency_aggregate_none():
+    totals = aggregate(traced(trace(1000.0, 0.01), trace(2000.0, None), trace(3000.0, 0.03)))
+
+    assert totals.cost_per_query_usd is None
+    assert totals.p95_latency_ms is None
+    assert totals.fallbacks is None
+
+
+def test_a_trace_costing_nothing_is_a_cost_not_a_missing_one():
+    totals = aggregate(traced(trace(1000.0, 0.0)))
+
+    assert totals.cost_per_query_usd == 0.0
+    assert totals.fallbacks == 0
+
+
+def test_money_is_four_decimals_and_seconds_one_and_a_missing_value_is_a_dash():
+    assert as_money(0.0464) == "$0.0464"
+    assert as_money(0.0) == "$0.0000"
+    assert as_money(0.12345) == "$0.1235"
+    assert as_money(None) == "—"
+    assert as_seconds(12400.0) == "12.4 s"
+    assert as_seconds(950.0) == "0.9 s"
+    assert as_seconds(None) == "—"

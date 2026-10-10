@@ -502,6 +502,11 @@ def test_the_command_writes_a_results_file_and_prints_the_summary(wired, tmp_pat
         "llm_model": "us.anthropic.claude-opus-5",
         "reranker": None,
         "rerank_candidates": None,
+        "tools": False,
+        "tools_today": None,
+        "fallback_model": None,
+        "tracing": None,
+        "langfuse_base_url": None,
     }
     assert record["corpus"] == {"edition": 2026, "sha256": "d7a341bc3d2d"}
     assert record["golden_set"]["count"] == 2

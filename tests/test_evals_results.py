@@ -30,6 +30,7 @@ from evals.results import (
     save,
     sha256_of,
 )
+from fineprint.tracing import CallRecord, TraceRecord
 
 HYBRID = RunConfig(
     name="hybrid",
@@ -267,6 +268,109 @@ def test_part_1s_committed_results_files_still_load_with_every_new_field_default
             assert chunk.text is None
             assert chunk.fused_rank is None
             assert chunk.rerank_score is None
+
+
+@pytest.mark.parametrize("path", sorted(RESULTS_DIR.glob("*.json")), ids=lambda path: path.name)
+def test_every_committed_results_file_loads_with_no_trace_and_the_part_3_defaults(path: Path):
+    result = load(path)
+
+    assert result.config.tools is False
+    assert result.config.tools_today is None
+    assert result.config.fallback_model is None
+    assert result.config.tracing is None
+    assert result.config.langfuse_base_url is None
+    assert all(row.trace is None for row in result.questions)
+    assert result.aggregates.cost_per_query_usd is None
+
+
+# --- part 3: the trace stored with each question -----------------------------------
+
+TRACE = TraceRecord(
+    trace_id="3f2a9c",
+    name="agent",
+    latency_ms=8123.5,
+    cost_usd=0.0412,
+    calls=[
+        CallRecord(
+            kind="embedding",
+            name="embed_query",
+            model="amazon.titan-embed-text-v2:0",
+            input_tokens=12,
+            output_tokens=None,
+            units=None,
+            latency_ms=140.0,
+            cost_usd=0.0,
+            error=None,
+        ),
+        CallRecord(
+            kind="generation",
+            name="answer",
+            model="us.anthropic.claude-sonnet-5",
+            input_tokens=1820,
+            output_tokens=96,
+            units=None,
+            latency_ms=7900.0,
+            cost_usd=0.0412,
+            error=None,
+            fallback=True,
+        ),
+    ],
+)
+
+
+def test_a_question_with_a_trace_survives_being_written_and_read_back(tmp_path: Path):
+    traced = replace(
+        run(),
+        config=replace(
+            HYBRID,
+            name="agent",
+            tools=True,
+            tools_today="2026-09-21",
+            fallback_model="us.anthropic.claude-sonnet-5",
+            tracing="langfuse",
+            langfuse_base_url="https://us.cloud.langfuse.com",
+        ),
+        questions=[replace(question(), trace=TRACE)],
+    )
+    path = save(traced, results_path(traced.run_id, tmp_path))
+
+    loaded = load(path)
+
+    assert loaded == traced
+    assert loaded.questions[0].trace == TRACE
+    assert isinstance(loaded.questions[0].trace.calls[1], CallRecord)
+    assert loaded.config.tools is True
+
+
+def test_a_question_without_a_trace_is_written_with_a_null_trace_and_read_back_as_none(
+    tmp_path: Path,
+):
+    path = save(run(), results_path(run().run_id, tmp_path))
+
+    assert json.loads(path.read_text(encoding="utf-8"))["questions"][0]["trace"] is None
+    assert load(path).questions[0].trace is None
+
+
+def test_a_trace_missing_a_field_is_refused_by_name(tmp_path: Path):
+    path = save(run(), results_path(run().run_id, tmp_path))
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record["questions"][0]["trace"] = {"trace_id": None, "name": "ask"}
+    path.write_text(json.dumps(record), encoding="utf-8")
+
+    with pytest.raises(ResultsError) as error:
+        load(path)
+
+    assert path.name in str(error.value)
+
+
+def test_a_run_aggregates_the_costs_of_the_traces_it_holds(tmp_path: Path):
+    traced = replace(run(), questions=[replace(question(), trace=TRACE)])
+
+    totals = load(save(traced, results_path(traced.run_id, tmp_path))).aggregates
+
+    assert totals.cost_per_query_usd == pytest.approx(0.0412)
+    assert totals.p95_latency_ms == 8123.5
+    assert totals.fallbacks == 1
 
 
 # --- finding the latest run per configuration -------------------------------------

@@ -23,13 +23,19 @@ by a language model rather than computed from page numbers. This module only car
 fields and folds them into a run's aggregates with the same `None`-ignoring `mean` as everything
 else here; `evals/ragas_metrics.py` defines what each one measures, and `python -m evals.score`
 computes them in a second pass over a results file, from the retrieved text the file records.
+
+Part 3 adds cost and latency. They are read from the `TraceRecord` stored with each question and
+are all-or-nothing per run: if any question has no trace, or a trace with no cost, the whole set
+is `None`, because a mean over some of the questions would read as the cost of all of them.
 """
 
+import math
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
 from evals.golden import GoldenItem
+from fineprint.tracing import TraceRecord
 
 PASS = "pass"
 FAIL = "fail"
@@ -60,6 +66,7 @@ class QuestionScore(Protocol):
     answered: bool
     metrics: "QuestionMetrics"
     verdict: str | None
+    trace: TraceRecord | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,6 +114,28 @@ class Aggregates:
     context_precision: float | None
     faithfulness: float | None
     answer_relevance: float | None
+    # Part 3: read from the trace stored with each question. All None unless every question of
+    # the run has a trace with a cost (see `_serving`).
+    cost_per_query_usd: float | None = None
+    p50_latency_ms: float | None = None
+    p95_latency_ms: float | None = None
+    max_latency_ms: float | None = None
+    generations_per_query: float | None = None
+    tool_calls_per_query: float | None = None
+    fallbacks: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Serving:
+    """What serving the run's questions cost and how long it took, from their traces."""
+
+    cost_per_query_usd: float
+    p50_latency_ms: float
+    p95_latency_ms: float
+    max_latency_ms: float
+    generations_per_query: float
+    tool_calls_per_query: float
+    fallbacks: int
 
 
 def covers(page_range: PageRange, page: int) -> bool:
@@ -221,6 +250,21 @@ def manual_pass(verdicts: Iterable[str | None]) -> ManualPass:
     return ManualPass(passes=sum(verdict == PASS for verdict in reviewed), reviewed=len(reviewed))
 
 
+def percentile(values: Sequence[float], p: float) -> float:
+    """The nearest-rank percentile: sort ascending and take the value at 1-based rank
+    ceil(p / 100 * n).
+
+    Of 40 values the 95th percentile is therefore the 38th smallest, one actual measurement and
+    never an interpolation between two. Raises `ValueError` when there are no values.
+    """
+    if not values:
+        raise ValueError("a percentile needs at least one value")
+    if not 0 <= p <= 100:
+        raise ValueError(f"p must be between 0 and 100, got {p}")
+    rank = max(1, math.ceil(p * len(values) / 100))  # multiply before dividing: 95 * 40 is exact
+    return sorted(values)[rank - 1]
+
+
 def as_percentage(value: float | None) -> str:
     """A share printed as a percentage, or the dash that means nobody has measured it."""
     return NOT_MEASURED if value is None else f"{value * 100:.1f}%"
@@ -231,6 +275,43 @@ def as_score(value: float | None) -> str:
     return NOT_MEASURED if value is None else f"{value:.2f}"
 
 
+def as_money(value: float | None) -> str:
+    """Dollars to four places, such as `$0.0464`, or the dash for no measurement."""
+    return NOT_MEASURED if value is None else f"${value:.4f}"
+
+
+def as_seconds(value_ms: float | None) -> str:
+    """Milliseconds printed as seconds to one place, such as `12.4 s`, or the dash."""
+    return NOT_MEASURED if value_ms is None else f"{value_ms / 1000:.1f} s"
+
+
+def _serving(rows: Sequence[QuestionScore]) -> Serving | None:
+    """Cost and latency over every question, or None unless each has a trace with a cost.
+
+    Unanswerable questions count: the service pays to say "the handbook does not say" too.
+    """
+    traces = [row.trace for row in rows]
+    complete = [trace for trace in traces if trace is not None and trace.cost_usd is not None]
+    if not traces or len(complete) != len(traces):
+        return None
+    latencies = [trace.latency_ms for trace in complete]
+    count = len(complete)
+    return Serving(
+        cost_per_query_usd=sum(trace.cost_usd for trace in complete) / count,
+        p50_latency_ms=percentile(latencies, 50),
+        p95_latency_ms=percentile(latencies, 95),
+        max_latency_ms=max(latencies),
+        generations_per_query=_calls(complete, "generation") / count,
+        tool_calls_per_query=_calls(complete, "tool") / count,
+        fallbacks=sum(any(call.fallback for call in trace.calls) for trace in complete),
+    )
+
+
+def _calls(traces: Sequence[TraceRecord], kind: str) -> int:
+    """How many calls of this kind the traces hold in all."""
+    return sum(call.kind == kind for trace in traces for call in trace.calls)
+
+
 def aggregate(scores: Iterable[QuestionScore]) -> Aggregates:
     """Roll the per-question metrics up into the run's numbers.
 
@@ -238,6 +319,7 @@ def aggregate(scores: Iterable[QuestionScore]) -> Aggregates:
     so a published number can always be traced back to the questions behind it.
     """
     rows = list(scores)
+    serving = _serving(rows)
     return Aggregates(
         questions=len(rows),
         answerable=sum(row.answerable for row in rows),
@@ -252,4 +334,11 @@ def aggregate(scores: Iterable[QuestionScore]) -> Aggregates:
         context_precision=mean(row.metrics.context_precision for row in rows),
         faithfulness=mean(row.metrics.faithfulness for row in rows),
         answer_relevance=mean(row.metrics.answer_relevance for row in rows),
+        cost_per_query_usd=serving.cost_per_query_usd if serving else None,
+        p50_latency_ms=serving.p50_latency_ms if serving else None,
+        p95_latency_ms=serving.p95_latency_ms if serving else None,
+        max_latency_ms=serving.max_latency_ms if serving else None,
+        generations_per_query=serving.generations_per_query if serving else None,
+        tool_calls_per_query=serving.tool_calls_per_query if serving else None,
+        fallbacks=serving.fallbacks if serving else None,
     )
