@@ -401,12 +401,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="skip the answer model; searching by meaning still embeds every question",
     )
     parser.add_argument(
+        "--only",
+        metavar="IDS",
+        help="run only these golden-set questions, comma-separated (for example q001,q006), as a "
+        "smoke test; needs a --results-dir other than the default, and the file it writes never "
+        "becomes a scoreboard row",
+    )
+    parser.add_argument(
         "--results-dir",
         type=Path,
         default=RESULTS_DIR,
         help=f"where to write the results file (default: {RESULTS_DIR})",
     )
     return parser
+
+
+def select_questions(items: Sequence[GoldenItem], only: str) -> tuple[list[GoldenItem], list[str]]:
+    """The golden-set questions named in `only` (comma-separated ids), in golden-set order.
+
+    Raises `RunError` for an id the golden set does not have, or for no id at all.
+    """
+    wanted = [part.strip() for part in only.split(",") if part.strip()]
+    if not wanted:
+        raise RunError("--only needs at least one question id, for example q001,q006")
+    known = {item.id for item in items}
+    unknown = [question_id for question_id in wanted if question_id not in known]
+    if unknown:
+        raise RunError(f"--only names {', '.join(unknown)}, which the golden set does not have")
+    chosen = [item for item in items if item.id in set(wanted)]
+    return chosen, [item.id for item in chosen]
 
 
 def run_date() -> date:
@@ -426,6 +449,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     except GoldenSetError as error:
         print(f"ERROR: {DEFAULT_GOLDEN_SET} failed validation:\n{error}", file=sys.stderr)
         return EXIT_FAILED
+
+    golden_count = len(items)
+    only: list[str] | None = None
+    if args.only is not None:
+        try:
+            items, only = select_questions(items, args.only)
+        except RunError as error:
+            print(f"ERROR: {error}", file=sys.stderr)
+            return EXIT_FAILED
+        if args.results_dir.resolve() == RESULTS_DIR.resolve():
+            print(
+                "ERROR: --only needs a --results-dir other than evals/results/, because the "
+                "scoreboard reads the latest file there and a partial run must not become a row",
+                file=sys.stderr,
+            )
+            return EXIT_FAILED
 
     reranker_note = f", reranker {eval_config.reranker}" if eval_config.reranker else ""
     print(
@@ -499,9 +538,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             langfuse_base_url=(
                 settings.langfuse_base_url if settings.tracing_provider == "langfuse" else None
             ),
+            only=only,
         ),
         corpus=corpus,
-        golden_set=GoldenSetInfo(sha256=sha256_of(DEFAULT_GOLDEN_SET), count=len(items)),
+        golden_set=GoldenSetInfo(sha256=sha256_of(DEFAULT_GOLDEN_SET), count=golden_count),
         questions=rows,
     )
     path = save(result, results_path(result.run_id, args.results_dir))
