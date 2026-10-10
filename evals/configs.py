@@ -4,8 +4,10 @@ re-ranker.
 A results file records a `RunConfig` — what a run actually did. `EvalConfig` is what tells
 `run_golden_set` what to do before it does it: which of the two chunk sets to search, which
 retrieval mode to run in, and whether Cohere Rerank 3.5 re-orders the fused list before the
-top-k cut. The six entries in `CONFIGS` are the six scoreboard rows part 2 adds: the three part 1
-kept unchanged, plus a chunk set x re-ranker 2x2 run in hybrid mode.
+top-k cut. Six entries in `CONFIGS` are the scoreboard rows of parts 1 and 2: the three part 1
+kept unchanged, plus a chunk set x re-ranker 2x2 run in hybrid mode. Part 3 adds a seventh,
+`agent`, which retrieves like `sections+rerank` and then lets the model call two tools
+(`tools=True`) before it answers.
 
 Part 1's three names — `hybrid`, `vector-only`, `lexical-only` — are kept exactly so their
 committed results files still key to the same rows (decision D6).
@@ -40,6 +42,7 @@ class EvalConfig:
     chunk_set: str
     mode: "SearchMode"
     reranker: str | None  # a Bedrock re-ranker model id, or None for no re-ranking step
+    tools: bool = False  # True when the model may call the two tools (the agent row)
 
 
 CONFIGS: dict[str, EvalConfig] = {
@@ -54,6 +57,13 @@ CONFIGS: dict[str, EvalConfig] = {
         EvalConfig(name="sections", chunk_set="sections", mode="hybrid", reranker=None),
         EvalConfig(
             name="sections+rerank", chunk_set="sections", mode="hybrid", reranker=RERANKER_MODEL
+        ),
+        EvalConfig(
+            name="agent",
+            chunk_set="sections",
+            mode="hybrid",
+            reranker=RERANKER_MODEL,
+            tools=True,
         ),
     )
 }
