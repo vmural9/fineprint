@@ -139,6 +139,51 @@ class Serving:
     fallbacks: int
 
 
+@dataclass(frozen=True, slots=True)
+class StepTimes:
+    """Where the time of a run's questions went, from their traces.
+
+    Each step's time is summed per question and then summarised over the questions. Retriever is
+    the `retriever` call (the search, with the embedding and the re-rank inside it), generation
+    the sum of the `generation` calls, tools the sum of the `tool` calls. `generation_share_p50`
+    is the median over questions of generation time divided by the question's whole time.
+    """
+
+    retriever_p50_ms: float
+    retriever_p95_ms: float
+    generation_p50_ms: float
+    generation_p95_ms: float
+    tools_p50_ms: float
+    tools_p95_ms: float
+    generation_share_p50: float | None  # None when no question took any time
+
+
+def step_times(traces: Sequence[TraceRecord]) -> StepTimes:
+    """Summarise the time each step took over a run's questions; `ValueError` when given none."""
+    retriever = [_call_ms(trace, "retriever") for trace in traces]
+    generation = [_call_ms(trace, "generation") for trace in traces]
+    tools = [_call_ms(trace, "tool") for trace in traces]
+    shares = [
+        spent / trace.latency_ms
+        for spent, trace in zip(generation, traces, strict=True)
+        if trace.latency_ms > 0
+    ]
+    return StepTimes(
+        retriever_p50_ms=percentile(retriever, 50),
+        retriever_p95_ms=percentile(retriever, 95),
+        generation_p50_ms=percentile(generation, 50),
+        generation_p95_ms=percentile(generation, 95),
+        tools_p50_ms=percentile(tools, 50),
+        tools_p95_ms=percentile(tools, 95),
+        generation_share_p50=percentile(shares, 50) if shares else None,
+    )
+
+
+def _call_ms(trace: TraceRecord, kind: str) -> float:
+    """The time a trace spent in calls of this kind, which is 0 when it made none."""
+    return sum(call.latency_ms for call in trace.calls if call.kind == kind)
+
+
 def covers(page_range: PageRange, page: int) -> bool:
     """True when the page lies within this chunk's first and last page, inclusive."""
     return page_range.page_start <= page <= page_range.page_end

@@ -548,3 +548,81 @@ def test_a_missing_readme_is_an_error_not_a_stale_file(tmp_path, capsys):
 
     assert exit_code == 2
     assert "does not exist" in capsys.readouterr().err
+
+
+# --- part 3: where the time went --------------------------------------------------
+#
+# Per question, from the agent fixture's calls (seconds):
+#   q001  retriever 1.0; generations 3.0 + 2.5 = 5.5; tool 0.4;           of 8 s    -> 68.75%
+#   q002  retriever 1.5; generations 2.0 + 3.0 + 3.5 = 8.5; tools 0.3 + 0.2 = 0.5; of 12 s -> 70.83%
+#   q003  retriever 0.5; generation 3.0; no tool (0);                      of 4 s    -> 75%
+#   q005  retriever 2.0; generations 6.0 + 9.0 = 15.0; tools 0.25 + 0.25 = 0.5; of 20 s -> 75%
+# Nearest rank over four questions: p50 is the 2nd smallest, p95 the 4th (the largest).
+#   retriever  sorted 0.5 1.0 1.5 2.0   -> p50 1.0 s,  p95 2.0 s
+#   generation sorted 3.0 5.5 8.5 15.0  -> p50 5.5 s,  p95 15.0 s
+#   tools      sorted 0 0.4 0.5 0.5     -> p50 0.4 s,  p95 0.5 s
+#   share      sorted 68.75 70.83 75 75 -> median (2nd smallest) 70.8%
+
+
+def test_the_time_by_step_table_lists_the_traced_row_with_hand_checked_numbers(fixture_results):
+    document = render(fixture_results, STAMP, golden=GOLDEN)
+
+    section = document.split("### Time by step")[1].split("### Tool calls")[0]
+    assert (
+        "| Configuration | Retriever p50 | Retriever p95 | Generation p50 | Generation p95 | "
+        "Tools p50 | Tools p95 | Generation share (median) |"
+    ) in section
+    assert "| agent | 1.0 s | 2.0 s | 5.5 s | 15.0 s | 0.4 s | 0.5 s | 70.8% |" in section
+    assert "| hybrid |" not in section
+    assert "nearest rank" in section
+
+
+def test_the_time_by_step_table_sits_after_cost_and_latency(fixture_results):
+    document = render(fixture_results, STAMP, golden=GOLDEN)
+
+    assert (
+        document.index("### Cost and latency")
+        < document.index("### Time by step")
+        < document.index("### Tool calls")
+    )
+
+
+def test_a_row_without_tools_has_dashes_for_the_tool_columns(fixture_results):
+    sections = replace(
+        fixture_results["agent"],
+        config=replace(fixture_results["agent"].config, name="sections", tools=False),
+    )
+    fixture_results["sections"] = sections
+
+    section = render(fixture_results, STAMP, golden=GOLDEN).split("### Time by step")[1]
+
+    assert "| sections | 1.0 s | 2.0 s | 5.5 s | 15.0 s | — | — | 70.8% |" in section
+    assert "| agent | 1.0 s | 2.0 s | 5.5 s | 15.0 s | 0.4 s | 0.5 s | 70.8% |" in section
+
+
+def test_a_row_with_any_question_lacking_a_trace_is_left_out_of_the_time_table(fixture_results):
+    fixture_results["sections"] = replace(
+        fixture_results["agent"],
+        config=replace(fixture_results["agent"].config, name="sections", tools=False),
+        questions=[replace(question) for question in fixture_results["agent"].questions],
+    )
+    fixture_results["sections"].questions[2].trace = None
+
+    section = render(fixture_results, STAMP, golden=GOLDEN).split("### Time by step")[1]
+
+    assert "| agent |" in section.split("### Tool calls")[0]
+    assert "| sections |" not in section.split("### Tool calls")[0]
+
+
+def test_the_time_by_step_table_is_left_out_while_no_row_is_fully_traced(fixture_results):
+    fixture_results["agent"].questions[0].trace = None
+
+    assert "Time by step" not in render(fixture_results, STAMP, golden=GOLDEN)
+
+
+def test_the_time_by_step_table_is_left_out_while_no_row_has_a_trace():
+    untraced = {
+        name: result for name, result in latest_per_config(FIXTURES).items() if name != "agent"
+    }
+
+    assert "Time by step" not in render(untraced, STAMP, golden=GOLDEN)
