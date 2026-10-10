@@ -7,9 +7,15 @@ hand-written fake never would.
 
 import boto3
 import pytest
+from botocore.exceptions import ClientError, EndpointConnectionError, ReadTimeoutError
 from botocore.stub import Stubber
 
-from fineprint.providers.base import RerankResult
+from fineprint.providers.base import (
+    ProviderRequestError,
+    ProviderTimeoutError,
+    ProviderUnavailableError,
+    RerankResult,
+)
 from fineprint.providers.bedrock_reranker import BedrockReranker, RerankResponseError
 
 MODEL = "cohere.rerank-v3-5:0"
@@ -197,3 +203,75 @@ def test_the_request_is_valid_for_the_real_bedrock_agent_runtime_api():
             RerankResult(index=0, score=0.0325),
         ]
         stubber.assert_no_pending_responses()
+
+
+class RaisingAgentRuntime:
+    def __init__(self, error: Exception):
+        self.error = error
+
+    def rerank(self, **kwargs: object) -> dict:
+        raise self.error
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (ReadTimeoutError(endpoint_url="https://bedrock.test"), ProviderTimeoutError),
+        (EndpointConnectionError(endpoint_url="https://bedrock.test"), ProviderUnavailableError),
+        (
+            ClientError({"Error": {"Code": "BadGatewayException", "Message": "x"}}, "Rerank"),
+            ProviderUnavailableError,
+        ),
+        (
+            ClientError({"Error": {"Code": "AccessDeniedException", "Message": "x"}}, "Rerank"),
+            ProviderRequestError,
+        ),
+    ],
+    ids=["timeout", "unreachable", "bad gateway", "access denied"],
+)
+def test_a_boto3_failure_becomes_a_provider_error_naming_the_model(error, expected):
+    reranker = BedrockReranker(model=MODEL, region="us-west-2", client=RaisingAgentRuntime(error))
+
+    with pytest.raises(expected) as raised:
+        reranker.rerank(QUESTION, DOCUMENTS, top_n=3)
+
+    assert type(raised.value) is expected
+    assert MODEL in str(raised.value)
+    assert raised.value.__cause__ is error
+
+
+class RecordingBoto3:
+    """Stands in for `boto3.client`, keeping what the re-ranker asked for."""
+
+    def __init__(self):
+        self.calls: list[tuple[tuple, dict]] = []
+
+    def __call__(self, *args: object, **kwargs: object) -> object:
+        self.calls.append((args, kwargs))
+        return FakeAgentRuntime(rerank_response((0, 0.5)))
+
+
+def test_the_boto3_client_gets_the_timeouts_and_the_standard_retry_mode(monkeypatch):
+    recorder = RecordingBoto3()
+    monkeypatch.setattr("fineprint.providers.bedrock_reranker.boto3.client", recorder)
+    reranker = BedrockReranker(model=MODEL, region="us-east-1", timeout=7.5, max_attempts=3)
+
+    reranker.rerank(QUESTION, DOCUMENTS, top_n=1)
+
+    ((args, kwargs),) = recorder.calls
+    assert args == ("bedrock-agent-runtime",)
+    assert kwargs["region_name"] == "us-east-1"
+    config = kwargs["config"]
+    assert config.connect_timeout == 5
+    assert config.read_timeout == 7.5
+    assert config.retries == {"max_attempts": 3, "mode": "standard"}
+
+
+def test_the_defaults_are_ten_seconds_and_four_attempts(monkeypatch):
+    recorder = RecordingBoto3()
+    monkeypatch.setattr("fineprint.providers.bedrock_reranker.boto3.client", recorder)
+
+    BedrockReranker(model=MODEL, region="us-west-2").rerank(QUESTION, DOCUMENTS, top_n=1)
+
+    config = recorder.calls[0][1]["config"]
+    assert (config.read_timeout, config.retries["max_attempts"]) == (10, 4)

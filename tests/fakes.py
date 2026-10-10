@@ -23,7 +23,7 @@ from typing import NamedTuple
 
 from pydantic import BaseModel
 
-from fineprint.providers.base import LLMResult, RerankResult
+from fineprint.providers.base import EmbeddingResult, LLMResult, RerankResult
 
 
 class FakeEmbedder:
@@ -31,6 +31,14 @@ class FakeEmbedder:
     same vector, which is what makes ingestion and retrieval tests repeatable."""
 
     dimension = 1024
+
+    def embed(self, texts: list[str]) -> EmbeddingResult:
+        # The word count stands in for Titan's token count, so tests can assert cost arithmetic.
+        return EmbeddingResult(
+            vectors=[self.embed_query(text) for text in texts],
+            input_tokens=sum(len(text.split()) for text in texts),
+            latency_ms=0.0,
+        )
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         return [self.embed_query(text) for text in texts]
