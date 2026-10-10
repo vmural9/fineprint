@@ -10,6 +10,8 @@ of the real models:
 - `ScriptedChatModel` hands back canned objects in order, from a separate queue for each schema,
   for code that asks a model several different things, or asks the same thing twice.
 - `FakeReranker` puts passages in order of how many of the query's words each one contains.
+- `RecordingSink` is a tracing sink that keeps every trace and observation it is handed, with
+  the updates made to each, so a test can read back what was traced without Langfuse.
 
 Import them as
 `from tests.fakes import FakeChatModel, FakeEmbedder, FakeReranker, ScriptedChatModel`.
@@ -19,7 +21,10 @@ import hashlib
 import math
 import random
 import re
-from typing import NamedTuple
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from typing import Any, NamedTuple
 
 from pydantic import BaseModel
 
@@ -172,3 +177,104 @@ class FakeReranker:
         # Sorting on (-score, index) puts the highest score first and breaks a tie by position.
         order = sorted(range(len(documents)), key=lambda index: (-scores[index], index))
         return [RerankResult(index=index, score=float(scores[index])) for index in order[:top_n]]
+
+
+@dataclass
+class RecordedObservation:
+    """One trace root or one observation a `RecordingSink` was asked to open.
+
+    `fields` merges every update made to it, so a test reads `observation.fields["output"]`
+    rather than walking the list; a later update wins over an earlier one for the same field.
+    """
+
+    kind: str  # "trace" for a trace's root observation
+    name: str
+    input: Any = None
+    model: str | None = None
+    parent: "RecordedObservation | None" = None
+    session_id: str | None = None
+    tags: list[str] = field(default_factory=list)
+    metadata: dict[str, str] = field(default_factory=dict)
+    updates: list[dict[str, Any]] = field(default_factory=list)
+    children: list["RecordedObservation"] = field(default_factory=list)
+
+    def update(self, **changes: Any) -> None:
+        self.updates.append(changes)
+
+    @property
+    def fields(self) -> dict[str, Any]:
+        merged: dict[str, Any] = {}
+        for changes in self.updates:
+            merged.update({key: value for key, value in changes.items() if value is not None})
+        return merged
+
+
+class RecordingSink:
+    """A tracing `Sink` that writes nothing anywhere and remembers everything.
+
+    `traces` holds each trace's root, `observations` every other observation in the order it
+    was opened, and each one's `parent` and `children` give the nesting. Every trace gets
+    `trace_id` as its id, so a test can assert on the id that comes back in a response.
+    """
+
+    def __init__(self, trace_id: str = "trace-1") -> None:
+        self.trace_id = trace_id
+        self.traces: list[RecordedObservation] = []
+        self.observations: list[RecordedObservation] = []
+        self.flushes = 0
+        self.shutdowns = 0
+        self._stack: list[RecordedObservation] = []
+
+    @contextmanager
+    def trace(
+        self,
+        name: str,
+        *,
+        input: Any = None,
+        session_id: str | None = None,
+        tags: Sequence[str] = (),
+        metadata: Mapping[str, str] | None = None,
+    ) -> Iterator[RecordedObservation]:
+        root = RecordedObservation(
+            kind="trace",
+            name=name,
+            input=input,
+            session_id=session_id,
+            tags=list(tags),
+            metadata=dict(metadata or {}),
+        )
+        self.traces.append(root)
+        self._stack.append(root)
+        try:
+            yield root
+        finally:
+            self._stack.pop()
+
+    @contextmanager
+    def observation(
+        self, kind: str, name: str, *, input: Any = None, model: str | None = None
+    ) -> Iterator[RecordedObservation]:
+        parent = self._stack[-1] if self._stack else None
+        observation = RecordedObservation(
+            kind=kind, name=name, input=input, model=model, parent=parent
+        )
+        if parent is not None:
+            parent.children.append(observation)
+        self.observations.append(observation)
+        self._stack.append(observation)
+        try:
+            yield observation
+        finally:
+            self._stack.pop()
+
+    def current_trace_id(self) -> str | None:
+        return self.trace_id if self._stack else None
+
+    def trace_url(self, trace_id: str) -> str | None:
+        return f"https://tracing.example/traces/{trace_id}"
+
+    def flush(self) -> None:
+        self.flushes += 1
+
+    def shutdown(self) -> None:
+        self.shutdowns += 1

@@ -28,8 +28,9 @@ The ranking Postgres does here is its own built-in `ts_rank_cd`, not BM25 (see d
 everything in this module calls it "lexical" and never "BM25".
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from typing import Literal, NamedTuple
+from typing import Any, Literal, NamedTuple
 
 from pgvector import Vector
 from psycopg_pool import ConnectionPool
@@ -37,6 +38,7 @@ from psycopg_pool import ConnectionPool
 from fineprint.config import Settings
 from fineprint.db import describe_database
 from fineprint.providers.base import Embedder, Reranker
+from fineprint.tracing import Tracer
 
 SearchMode = Literal["hybrid", "vector", "lexical"]
 SEARCH_MODES: tuple[SearchMode, ...] = ("hybrid", "vector", "lexical")
@@ -129,6 +131,25 @@ class RetrievedChunk:
     rerank_score: float | None
 
 
+def summarize_chunks(chunks: Sequence[RetrievedChunk]) -> list[dict[str, Any]]:
+    """Which chunks a search returned, as a trace shows them: id, pages, rank and score.
+
+    The text is left out: a trace of a search is read for where each chunk landed, and the
+    chunk ids and pages are enough to look the text up.
+    """
+    return [
+        {
+            "chunk_id": chunk.chunk_id,
+            "pages": str(chunk.page_start)
+            if chunk.page_start == chunk.page_end
+            else f"{chunk.page_start}-{chunk.page_end}",
+            "rank": chunk.rank,
+            "score": chunk.score,
+        }
+        for chunk in chunks
+    ]
+
+
 class EditionNotIngestedError(RuntimeError):
     """`CORPUS_EDITION` names an edition that is not in the database."""
 
@@ -156,7 +177,8 @@ class Retriever:
 
     Holds the connection pool, the embedder that turns a question into a vector, the settings
     that say which edition and which chunk set every query is restricted to, and the re-ranker
-    that re-orders hybrid results, if one is configured.
+    that re-orders hybrid results, if one is configured. With a tracer, every `search` is one
+    "retriever" span, and the embedding and re-rank calls it makes nest inside it.
     """
 
     def __init__(
@@ -165,11 +187,13 @@ class Retriever:
         embedder: Embedder,
         settings: Settings,
         reranker: Reranker | None = None,
+        tracer: Tracer | None = None,
     ) -> None:
         self.pool = pool
         self.embedder = embedder
         self.settings = settings
         self.reranker = reranker
+        self.tracer = tracer
         self._document_id: int | None = None
 
     @property
@@ -249,6 +273,21 @@ class Retriever:
         `vector` and `lexical` are never re-ranked: they exist to measure one retriever on its
         own.
         """
+        if self.tracer is None:
+            return self._search(question, mode, top_k)
+        shown = {
+            "question": question,
+            "mode": mode,
+            "top_k": self.settings.retrieval_top_k if top_k is None else top_k,
+            "chunk_set": self.settings.chunk_set,
+        }
+        with self.tracer.span("retriever", "search", input=shown) as span:
+            chunks = self._search(question, mode, top_k)
+            span.end(output=summarize_chunks(chunks))
+            return chunks
+
+    def _search(self, question: str, mode: SearchMode, top_k: int | None) -> list[RetrievedChunk]:
+        """`search` without the span: the cut, and the re-rank if there is one."""
         kept = self.settings.retrieval_top_k if top_k is None else top_k
         ordered = self.candidates(question, mode)
         if self.reranker is None or mode != "hybrid":

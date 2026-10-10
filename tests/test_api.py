@@ -17,11 +17,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from fineprint.answer import DraftAnswer
-from fineprint.api import app, get_chat, get_pool, get_retriever, get_settings
+from fineprint.api import app, get_chat, get_pool, get_retriever, get_settings, get_tracer
 from fineprint.config import Settings
+from fineprint.pricing import Price
 from fineprint.providers.base import LLMResult
 from fineprint.retrieval import EditionNotIngestedError, RetrievedChunk
-from tests.fakes import FakeChatModel
+from fineprint.tracing import TracedChatModel, Tracer
+from tests.fakes import FakeChatModel, RecordingSink
 
 # The heading the premium passage sits under on page 23 of the handbook.
 PREMIUM_SECTION = "How much does Part B coverage cost?"
@@ -106,8 +108,28 @@ class FakePool:
         yield FakeConnection((self.chunk_count,))
 
 
+# A price for the fake chat model, so the cost an endpoint reports can be worked out by hand:
+# 900 input and 120 output tokens at $1 and $2 per million is $0.00114.
+FAKE_PRICES = {
+    "fake-chat-model": Price(
+        model="fake-chat-model",
+        input_per_million=1.0,
+        output_per_million=2.0,
+        per_unit=None,
+        unit="tokens",
+        source_url="https://prices.example/list.json",
+        retrieved_on="2026-10-10",
+    )
+}
+
+
 @pytest.fixture
-def client(monkeypatch, tmp_path) -> Iterator[TestClient]:
+def sink() -> RecordingSink:
+    return RecordingSink(trace_id="trace-from-the-sink")
+
+
+@pytest.fixture
+def client(monkeypatch, tmp_path, sink: RecordingSink) -> Iterator[TestClient]:
     """A test client with every outside dependency replaced by a fake.
 
     Each override is a function of no arguments, because FastAPI reads an override's
@@ -117,7 +139,9 @@ def client(monkeypatch, tmp_path) -> Iterator[TestClient]:
     override(get_settings, Settings())
     override(get_pool, FakePool())
     override(get_retriever, FakeRetriever())
-    override(get_chat, FakeChatModel(DRAFT))
+    tracer = Tracer(sink)
+    override(get_tracer, tracer)
+    override(get_chat, TracedChatModel(FakeChatModel(DRAFT), tracer, prices=FAKE_PRICES))
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -222,6 +246,14 @@ def test_search_answers_503_when_the_edition_has_not_been_ingested(client: TestC
     assert "not ingested" in response.json()["detail"]
 
 
+def test_search_opens_a_trace_tagged_api(client: TestClient, sink: RecordingSink):
+    client.post("/search", json={"query": "Part B premium", "mode": "lexical", "top_k": 3})
+
+    (trace,) = sink.traces
+    assert (trace.name, trace.input, trace.tags) == ("search", "Part B premium", ["api"])
+    assert trace.fields["output"] == [{"chunk_id": 61, "pages": "23", "rank": 1, "score": 0.0325}]
+
+
 # --- /ask -------------------------------------------------------------------------------
 
 
@@ -246,6 +278,19 @@ def test_ask_returns_a_cited_answer(client: TestClient):
         }
     ]
     assert body["model"] == "fake-chat-model"
+
+
+def test_ask_reports_its_trace_and_what_the_question_cost(client: TestClient, sink: RecordingSink):
+    response = client.post("/ask", json={"question": "How much is the Part B premium in 2026?"})
+
+    body = response.json()
+    assert body["trace_id"] == "trace-from-the-sink"
+    assert body["cost_usd"] == pytest.approx(0.00114)
+    assert body["fallback_used"] is False
+    (trace,) = sink.traces
+    assert (trace.name, trace.tags) == ("ask", ["api"])
+    assert trace.input == "How much is the Part B premium in 2026?"
+    assert [child.kind for child in trace.children] == ["generation"]
 
 
 def test_ask_passes_top_k_to_the_retriever(client: TestClient):
@@ -300,6 +345,24 @@ def test_healthz_reports_the_database_and_what_is_in_it(client: TestClient):
     assert body["edition"] == 2026
     assert body["chunk_set"] == "fixed-220w"
     assert body["chunks"] == 267
+    assert body["tracing"] == "none"
+
+
+def test_healthz_reports_the_tracing_provider(client: TestClient):
+    override(
+        get_settings,
+        Settings(
+            tracing_provider="langfuse",
+            langfuse_public_key="pk-test",
+            langfuse_secret_key="sk-test",
+            langfuse_base_url="https://langfuse.example",
+        ),
+    )
+
+    response = client.get("/healthz")
+
+    assert response.json()["tracing"] == "langfuse"
+    assert "sk-test" not in response.text
 
 
 def test_healthz_answers_503_when_the_database_is_unreachable(client: TestClient):
@@ -345,6 +408,26 @@ def test_the_service_builds_its_retriever_with_the_configured_reranker(
         reranker = app.state.retriever.reranker
 
     assert (None if reranker is None else reranker.model) == model
+
+
+def test_the_service_builds_one_tracer_and_shuts_it_down(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    sink = RecordingSink()
+    monkeypatch.setattr("fineprint.api.factory.get_tracer", lambda settings: Tracer(sink))
+
+    @contextmanager
+    def fake_pool(database_url: str) -> Iterator[FakePool]:
+        yield FakePool()
+
+    monkeypatch.setattr("fineprint.api.connection_pool", fake_pool)
+
+    with TestClient(app):
+        tracer = app.state.tracer
+        assert app.state.retriever.tracer is tracer
+        assert app.state.chat._tracer is tracer
+        assert sink.shutdowns == 0
+
+    assert sink.shutdowns == 1
 
 
 # --- the documented schemas -------------------------------------------------------------
