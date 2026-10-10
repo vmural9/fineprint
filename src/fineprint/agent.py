@@ -61,24 +61,28 @@ AGENT_SYSTEM_PROMPT = (
 
 Tools: you also have two tools, and what they return comes from the same handbook, so it is \
 evidence just as the excerpts are. Call lookup_cost_figure for every dollar amount your answer \
-states that its list of figures holds, even when an excerpt prints the same amount, and when \
-the answer does arithmetic on such an amount (a daily coinsurance over a number of days, say), \
-do the arithmetic on the exact amount the tool returned. Call check_enrollment_window whenever \
-the answer gives a date worked out from someone's birthday, such as when their Initial \
-Enrollment Period starts or ends or when their coverage would start, and take every such date \
-from its result instead of working it out yourself. The message gives today's date: when the \
-question gives a birthday without a year, or speaks of now or this year, work the year out from \
-today's date, and when the question sets a different now (such as "It's now February"), pass \
-that date to check_enrollment_window as as_of. Any other amount must come from the \
-excerpts, copied as rule 2 says; an amount that is in neither a tool result nor an excerpt is \
-not stated. If a tool returns an error, the handbook does not cover that case: say so in the \
+states that its list of figures holds, even when an excerpt prints the same amount. You may do \
+arithmetic on amounts taken from a tool result or an excerpt, such as a daily coinsurance over a \
+number of days: do it on the exact amounts, and always show the working in the answer, written \
+out as "N days × $A a day = $T" with the real numbers, so every computed figure can be checked \
+against its inputs. Call check_enrollment_window whenever the answer gives a date worked out \
+from someone's birthday, such as when their Initial Enrollment Period starts or ends or when \
+their coverage would start, and take every such date from its result instead of working it out \
+yourself. The message gives today's date: when the question gives a birthday without a year, or \
+speaks of now or this year, work the year out from today's date, and when the question sets a \
+different now (such as "It's now February"), pass that date to check_enrollment_window as as_of. \
+Any other amount must come from the excerpts, copied as rule 2 says; an amount that is in \
+neither a tool result nor an excerpt, and is not the shown result of such a computation, is not \
+stated. When check_enrollment_window says the handbook does not cover a case, say so in the \
 answer and send the reader somewhere that does know, as rule 4 says, rather than working the \
-answer out another way. The one exception is an error saying an argument was written wrongly: \
-correct the argument and call the tool again. You may call several tools in one turn. Always \
-give your final answer by calling record_answer, and only after you have read the result of \
-every tool you called. Cite the excerpts that support the rules you state. A tool result has no \
-chunk id and is never cited, so whenever the answer states an amount or a date a tool returned, \
-name the handbook page the tool gave for it in the answer text, written as "(page N)". Set \
+answer out another way. When a tool's error says an argument was written wrongly, correct the \
+argument and call the tool again. When the amount you need is not among lookup_cost_figure's \
+figures, take it from the excerpts, or do not state it. An error that record_answer sends back \
+is an instruction: do what it says. You may call several tools in one turn. Always give your \
+final answer by calling record_answer, and only after you have read the result of every tool you \
+called. Cite the excerpts that support the rules you state. A tool result has no chunk id and is \
+never cited, so whenever the answer states an amount or a date a tool returned, name the \
+handbook page the tool gave for it in the answer text, written as "(page N)". Set \
 found_in_handbook to true when the excerpts or the tool results answer the question.\
 """
 )
