@@ -58,7 +58,7 @@ renders as `—`; it never carries a placeholder value.
 
 Golden set: 40 questions · Corpus: Medicare & You, 2026 edition, sha256 `d7a341bc3d2d`
 
-Generated at 2026-10-10 02:47 UTC.
+Generated at 2026-10-10 02:52 UTC.
 
 | Configuration | Page hit@5 | Manual pass | Context recall | Context precision | Faithfulness | Answer relevance | Cost per query | p95 latency | Judge pass | Adversarial pass |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
