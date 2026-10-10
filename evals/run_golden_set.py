@@ -44,6 +44,7 @@ from psycopg_pool import PoolTimeout
 from evals import metrics
 from evals.configs import CONFIGS, EvalConfig, settings_for
 from evals.golden import DEFAULT_GOLDEN_SET, GoldenItem, GoldenSetError, load_golden_set
+from evals.metrics import skipped_rerank
 from evals.results import (
     RESULTS_DIR,
     Corpus,
@@ -272,6 +273,13 @@ def fallback_questions(result: RunResult) -> list[str]:
     ]
 
 
+def skipped_rerank_questions(result: RunResult) -> list[str]:
+    """The ids of the questions whose re-rank failed, so they were answered from the fused order."""
+    return [
+        row.id for row in result.questions if row.trace is not None and skipped_rerank(row.trace)
+    ]
+
+
 def summary_lines(result: RunResult) -> list[str]:
     """The aggregate numbers, recomputed from the rows that were just written.
 
@@ -303,6 +311,9 @@ def summary_lines(result: RunResult) -> list[str]:
     if answered_by_fallback:
         model = result.config.fallback_model or "the fallback model"
         lines.append(f"  answered by {model}: {', '.join(answered_by_fallback)}")
+    skipped = skipped_rerank_questions(result)
+    if skipped:
+        lines.append(f"  re-rank skipped: {', '.join(skipped)}")
     return lines
 
 
@@ -589,6 +600,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"\nwrote {path}")
     if not args.retrieval_only:
         print(f"next: python -m evals.review {path}")
+    if skipped_rerank_questions(result):
+        print(
+            "ERROR: a re-rank failed on at least one question, so those were answered from the "
+            "fused order and this row would not measure the re-ranker. Run it again.",
+            file=sys.stderr,
+        )
+        return EXIT_FAILED
     return EXIT_FAILED if result.errors else EXIT_OK
 
 

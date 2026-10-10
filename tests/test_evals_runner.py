@@ -1272,3 +1272,72 @@ def test_the_agent_turn_limit_is_recorded_for_tool_configurations_only(wired, tm
     }
     assert configs["agent.json"]["agent_max_tool_turns"] == 4
     assert configs["sections.json"]["agent_max_tool_turns"] is None
+
+
+# --- a re-rank that failed is counted, not hidden -----------------------------------
+
+
+def reranked_trace(*, failed: bool) -> TraceRecord:
+    call = CallRecord(
+        kind="rerank",
+        name="rerank",
+        model="cohere.rerank-v3-5:0",
+        input_tokens=None,
+        output_tokens=None,
+        units=1,
+        latency_ms=50.0,
+        cost_usd=0.0 if failed else 0.002,
+        error="throttled" if failed else None,
+    )
+    return TraceRecord(
+        trace_id=None, name="eval-question", latency_ms=1000.0, cost_usd=call.cost_usd, calls=[call]
+    )
+
+
+def test_the_summary_names_the_questions_whose_rerank_failed():
+    rows = [traced_row(f"q{n:03d}", cost=0.1, latency_ms=1000) for n in (1, 2, 17)]
+    for row, failed in zip(rows, (True, False, True), strict=True):
+        row.trace = reranked_trace(failed=failed)
+
+    lines = summary_lines(run_of(*rows))
+
+    assert "  re-rank skipped: q001, q017" in lines
+
+
+def test_the_summary_says_nothing_about_reranks_when_none_failed():
+    rows = [traced_row("q001", cost=0.1, latency_ms=1000)]
+    rows[0].trace = reranked_trace(failed=False)
+
+    assert not any("re-rank" in line for line in summary_lines(run_of(*rows)))
+
+
+def test_a_failed_rerank_does_not_make_the_question_a_fallback_answer():
+    row = traced_row("q001", cost=0.1, latency_ms=1000)
+    row.trace = reranked_trace(failed=True)
+
+    lines = summary_lines(run_of(row))
+
+    assert "  fallbacks            0" in lines
+
+
+def test_the_command_exits_1_and_says_why_when_a_rerank_failed(wired, tmp_path, capsys):
+    from fineprint.providers.base import ProviderUnavailableError
+
+    items = [golden("q001"), golden("q002", question="What does Part D cover?")]
+
+    def answer_fn(question: str, chunks):
+        with wired.tracer.span("rerank", "rerank", model="cohere.rerank-v3-5:0") as span:
+            failed = question == items[0].question
+            span.end(units=1, error=ProviderUnavailableError("throttled") if failed else None)
+        return answered(question)
+
+    retriever = FakeRetriever({item.question: ON_PAGE_23 for item in items})
+    wired(items, retriever, answer_fn=answer_fn)
+
+    exit_code = main(["--config", "sections+rerank", "--results-dir", str(tmp_path)])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "re-rank skipped: q001" in captured.out
+    assert "re-rank failed" in captured.err
+    assert len(list(tmp_path.glob("*.json"))) == 1, "the file is written all the same"

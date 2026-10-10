@@ -83,11 +83,11 @@ Only rows with a re-ranker are in this table. It is computed from the top 5 each
 
 ### Cost and latency
 
-| Configuration | Mean cost | p50 latency | p95 latency | Max latency | Generations per query | Tool calls per query | Fallbacks |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| agent | $0.0500 | 8.0 s | 20.0 s | 20.0 s | 2.00 | 1.25 | 1 |
+| Configuration | Mean cost | p50 latency | p95 latency | Max latency | Generations per query | Tool calls per query | Fallbacks | Re-ranks skipped |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| agent | $0.0500 | 8.0 s | 20.0 s | 20.0 s | 2.00 | 1.25 | 1 | — |
 
-Only rows with a trace stored for at least one question are in this table, and a cell is a dash unless every question of the run has a trace with a cost. Mean cost counts every question, unanswerable ones included. Latency is the wall time of the whole question, measured on one machine on one day. A generation is one call to the answer model, so a row that answers in a single call has 1.00; the agent's extra turns raise it. *Fallbacks* is the number of questions where any generation ran on the fallback model.
+Only rows with a trace stored for at least one question are in this table, and a cell is a dash unless every question of the run has a trace with a cost. Mean cost counts every question, unanswerable ones included. Latency is the wall time of the whole question, measured on one machine on one day. A generation is one call to the answer model, so a row that answers in a single call has 1.00; the agent's extra turns raise it. *Fallbacks* is the number of questions where any generation ran on the fallback model. *Re-ranks skipped* is the number of questions whose re-rank call failed, so their chunks stayed in the fused order; it is a dash for a row without a re-ranker.
 
 ### Time by step
 

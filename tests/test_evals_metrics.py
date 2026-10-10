@@ -385,7 +385,7 @@ def test_aggregate_leaves_the_four_ragas_metrics_none_when_none_are_present():
 # --- part 3: percentiles, cost and latency ----------------------------------------
 
 
-def call(kind: str, *, fallback: bool = False) -> CallRecord:
+def call(kind: str, *, fallback: bool = False, error: str | None = None) -> CallRecord:
     """One finished call of the given kind; the aggregates only read its kind and fallback flag."""
     return CallRecord(
         kind=kind,
@@ -396,7 +396,7 @@ def call(kind: str, *, fallback: bool = False) -> CallRecord:
         units=None,
         latency_ms=1.0,
         cost_usd=None,
-        error=None,
+        error=error,
         fallback=fallback,
     )
 
@@ -613,3 +613,21 @@ def test_a_question_with_no_time_is_left_out_of_the_share():
 def test_step_times_of_no_questions_is_an_error():
     with pytest.raises(ValueError):
         step_times([])
+
+
+def test_a_skipped_rerank_is_counted_once_per_question_and_never_as_a_fallback():
+    rows = traced(
+        trace(1000.0, 0.01, call("rerank"), call("generation")),
+        trace(1000.0, 0.01, call("rerank", error="throttled"), call("generation")),
+        trace(1000.0, 0.01, call("rerank", error="timed out"), call("generation")),
+        trace(1000.0, 0.01, call("generation")),
+    )
+
+    totals = aggregate(rows)
+
+    assert totals.reranks_skipped == 2
+    assert totals.fallbacks == 0
+
+
+def test_skipped_reranks_are_unknown_unless_every_question_has_a_trace_with_a_cost():
+    assert aggregate(traced(trace(1000.0, 0.01), None)).reranks_skipped is None

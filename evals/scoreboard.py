@@ -241,6 +241,7 @@ SERVING_COLUMNS = (
     "Generations per query",
     "Tool calls per query",
     "Fallbacks",
+    "Re-ranks skipped",
 )
 
 SERVING_NOTE = (
@@ -249,7 +250,9 @@ SERVING_NOTE = (
     "question, unanswerable ones included. Latency is the wall time of the whole question, "
     "measured on one machine on one day. A generation is one call to the answer model, so a "
     "row that answers in a single call has 1.00; the agent's extra turns raise it. *Fallbacks* "
-    "is the number of questions where any generation ran on the fallback model."
+    "is the number of questions where any generation ran on the fallback model. *Re-ranks "
+    "skipped* is the number of questions whose re-rank call failed, so their chunks stayed in the "
+    "fused order; it is a dash for a row without a re-ranker."
 )
 
 STEP_COLUMNS = (
@@ -548,6 +551,11 @@ def _serving_rows(results: Mapping[str, RunResult]) -> list[list[str]]:
             continue
         totals = result.aggregates
         fallbacks = NOT_MEASURED if totals.fallbacks is None else str(totals.fallbacks)
+        skipped = (
+            str(totals.reranks_skipped)
+            if result.config.reranker and totals.reranks_skipped is not None
+            else NOT_MEASURED
+        )
         rows.append(
             [
                 name,
@@ -558,6 +566,7 @@ def _serving_rows(results: Mapping[str, RunResult]) -> list[list[str]]:
                 metrics.as_score(totals.generations_per_query),
                 metrics.as_score(totals.tool_calls_per_query),
                 fallbacks,
+                skipped,
             ]
         )
     return rows
