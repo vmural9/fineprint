@@ -9,9 +9,10 @@ Generated at 2026-09-21 03:15 UTC.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | hybrid | 66.7% | 50.0% (2 reviewed) | — | — | — | — | — | — | — | — |
 | hybrid+rerank | 66.7% | — | 0.50 | 0.67 | 0.80 | 0.53 | — | — | — | — |
+| agent | 66.7% | — | — | — | — | — | $0.0500 | 20.0 s | — | — |
 | lexical-only | 66.7% | — | — | — | — | — | — | — | — | — |
 
-`—` means not measured yet, never a stand-in value. Part 1 fills Page hit@5 and Manual pass; part 2 the four RAGAS columns; part 3 cost per query and p95 latency; part 4 the judge and adversarial columns. The four RAGAS columns are scored by the judge model named in the provenance table and are LLM-judged estimates.
+`—` means not measured yet, never a stand-in value. Part 1 fills Page hit@5 and Manual pass; part 2 the four RAGAS columns; part 3 cost per query and p95 latency; part 4 the judge and adversarial columns. The four RAGAS columns are scored by the judge model named in the provenance table and are LLM-judged estimates. Cost per query and p95 latency come from the trace stored with each question, at AWS list prices in us-west-2, with p95 taken by nearest rank over the run's questions.
 
 The secondary metrics and the breakdown by question type are in [evals/scoreboard.md](evals/scoreboard.md).
 <!-- scoreboard:end -->

@@ -11,9 +11,10 @@ Generated at 2026-09-21 03:15 UTC.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | hybrid | 66.7% | 50.0% (2 reviewed) | — | — | — | — | — | — | — | — |
 | hybrid+rerank | 66.7% | — | 0.50 | 0.67 | 0.80 | 0.53 | — | — | — | — |
+| agent | 66.7% | — | — | — | — | — | $0.0500 | 20.0 s | — | — |
 | lexical-only | 66.7% | — | — | — | — | — | — | — | — | — |
 
-`—` means not measured yet, never a stand-in value. Part 1 fills Page hit@5 and Manual pass; part 2 the four RAGAS columns; part 3 cost per query and p95 latency; part 4 the judge and adversarial columns. The four RAGAS columns are scored by the judge model named in the provenance table and are LLM-judged estimates.
+`—` means not measured yet, never a stand-in value. Part 1 fills Page hit@5 and Manual pass; part 2 the four RAGAS columns; part 3 cost per query and p95 latency; part 4 the judge and adversarial columns. The four RAGAS columns are scored by the judge model named in the provenance table and are LLM-judged estimates. Cost per query and p95 latency come from the trace stored with each question, at AWS list prices in us-west-2, with p95 taken by nearest rank over the run's questions.
 
 ## Detail
 
@@ -23,6 +24,7 @@ Generated at 2026-09-21 03:15 UTC.
 | --- | --- | --- | --- | --- | --- |
 | hybrid | 50.0% | 0.50 | 33.3% | 100.0% | 2 of 4 |
 | hybrid+rerank | 50.0% | 0.67 | 66.7% | 75.0% | 0 of 4 |
+| agent | 50.0% | 0.50 | 33.3% | 100.0% | 0 of 4 |
 | lexical-only | 66.7% | 0.44 | — | — | — |
 
 `page_recall@5` is the share of a question's expected pages that were found, so it is the column that exposes questions whose answer needs two sections.
@@ -33,6 +35,7 @@ Generated at 2026-09-21 03:15 UTC.
 | --- | --- | --- | --- |
 | hybrid | 100.0% (1) | 0.0% (1) | 100.0% (1) |
 | hybrid+rerank | 100.0% (1) | 0.0% (1) | 100.0% (1) |
+| agent | 100.0% (1) | 0.0% (1) | 100.0% (1) |
 | lexical-only | 100.0% (1) | 100.0% (1) | 0.0% (1) |
 
 Each cell is the share of that type's questions whose expected page was retrieved, with the number of questions of that type in brackets. Unanswerable questions have no expected pages, so they are not in this table; what they measure is `abstention_accuracy` above.
@@ -43,6 +46,7 @@ Each cell is the share of that type's questions whose expected page was retrieve
 | --- | --- | --- | --- |
 | hybrid | 100.0% (1) | 0.0% (1) | 50.0% (1) |
 | hybrid+rerank | 100.0% (1) | 0.0% (1) | 50.0% (1) |
+| agent | 100.0% (1) | 0.0% (1) | 50.0% (1) |
 | lexical-only | 100.0% (1) | 100.0% (1) | 0.0% (1) |
 
 Each cell is the mean share of that type's questions' expected pages that were found, with the number of questions of that type in brackets.
@@ -53,6 +57,7 @@ Each cell is the mean share of that type's questions' expected pages that were f
 | --- | --- | --- | --- |
 | hybrid | — | — | — |
 | hybrid+rerank | 1.00 (1) | 0.00 (1) | 0.50 (1) |
+| agent | — | — | — |
 | lexical-only | — | — | — |
 
 Each cell is the mean share of the expected answer's sentences the retrieved passages supported, for that type's questions a scoring pass has scored, with that count in brackets.
@@ -63,6 +68,7 @@ Each cell is the mean share of the expected answer's sentences the retrieved pas
 | --- | --- | --- | --- |
 | hybrid | — | — | — |
 | hybrid+rerank | 1.00 (1) | — | 0.60 (1) |
+| agent | — | — | — |
 | lexical-only | — | — | — |
 
 Each cell is the mean share of the generated answer's own claims the retrieved passages supported, for that type's questions with at least one claim to check, with that count in brackets.
@@ -75,10 +81,28 @@ Each cell is the mean share of the generated answer's own claims the retrieved p
 
 Only rows with a re-ranker are in this table. It is computed from the top 5 each run stored, checked against the golden set as it stands now, `alt_pages` included. For each answerable question it takes the first stored chunk covering an expected page or one of its `alt_pages` alternates: `fused_rank` > 5 means that chunk sat outside the top 5 before re-ranking and re-ranking lifted it in; `fused_rank` ≤ 5 means it was already there. *Lifted* counts that chunk, not its page: another chunk of the same page may already have been in the top 5 before re-ranking, so this column can be larger than the number of questions whose page the re-ranker newly brought into the top 5, which is what the rise in `page_hit@5` over the row's un-re-ranked twin (`hybrid` or `sections`) shows. A page the re-ranker pushed *out* of the top 5 cannot be seen from the stored top 5, so it never appears here — that loss is what a lower `page_hit@5` on this row than on its twin shows.
 
+### Cost and latency
+
+| Configuration | Mean cost | p50 latency | p95 latency | Max latency | Generations per query | Tool calls per query | Fallbacks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| agent | $0.0500 | 8.0 s | 20.0 s | 20.0 s | 2.00 | 1.25 | 1 |
+
+Only rows with a trace stored for at least one question are in this table, and a cell is a dash unless every question of the run has a trace with a cost. Mean cost counts every question, unanswerable ones included. Latency is the wall time of the whole question, measured on one machine on one day. A generation is one call to the answer model, so a row that answers in a single call has 1.00; the agent's extra turns raise it. *Fallbacks* is the number of questions where any generation ran on the fallback model.
+
+### Tool calls
+
+| Configuration | Tool | Questions that called it | Calls | Errors |
+| --- | --- | --- | --- | --- |
+| agent | check_enrollment_window | 1 | 1 | 1 |
+| agent | lookup_cost_figure | 3 | 4 | 0 |
+
+Only rows that offered the model the two tools are in this table, counted from the tool calls stored with each answer. A call that errored is one the tool refused, for example for an argument it does not know.
+
 ### What produced each row
 
-| Configuration | Mode | Chunk set | k | Candidates | RRF k | Reranker | Embedding model | Answer model | Judge model | Commit | Run |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | hybrid | fixed-220w | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | — | 1f4e9c2 | 20260921T031500Z_hybrid |
-| hybrid+rerank | hybrid | fixed-220w | 5 | 20 | 60 | cohere.rerank-v3-5:0 | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | us.anthropic.claude-sonnet-5 | 1f4e9c2 | 20260921T050000Z_hybrid+rerank |
-| lexical-only | lexical | fixed-220w | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | — | — | 1f4e9c2 (dirty) | 20260921T041500Z_lexical-only |
+| Configuration | Mode | Chunk set | k | Candidates | RRF k | Reranker | Embedding model | Answer model | Fallback model | Judge model | Tracing | Commit | Run |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| hybrid | hybrid | fixed-220w | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | — | — | — | 1f4e9c2 | 20260921T031500Z_hybrid |
+| hybrid+rerank | hybrid | fixed-220w | 5 | 20 | 60 | cohere.rerank-v3-5:0 | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | — | us.anthropic.claude-sonnet-5 | — | 1f4e9c2 | 20260921T050000Z_hybrid+rerank |
+| agent | hybrid | sections | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | us.anthropic.claude-sonnet-5 | — | langfuse | 1f4e9c2 | 20260921T060000Z_agent |
+| lexical-only | lexical | fixed-220w | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | — | — | — | — | 1f4e9c2 (dirty) | 20260921T041500Z_lexical-only |

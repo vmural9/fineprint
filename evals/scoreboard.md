@@ -5,7 +5,7 @@
 
 Golden set: 40 questions · Corpus: Medicare & You, 2026 edition, sha256 `d7a341bc3d2d`
 
-Generated at 2026-10-09 23:29 UTC.
+Generated at 2026-10-10 02:47 UTC.
 
 | Configuration | Page hit@5 | Manual pass | Context recall | Context precision | Faithfulness | Answer relevance | Cost per query | p95 latency | Judge pass | Adversarial pass |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -16,7 +16,7 @@ Generated at 2026-10-09 23:29 UTC.
 | vector-only | 88.2% | — | 0.86 | 0.87 | 0.94 | 0.56 | — | — | — | — |
 | lexical-only | 67.6% | — | 0.56 | 0.57 | 0.91 | 0.43 | — | — | — | — |
 
-`—` means not measured yet, never a stand-in value. Part 1 fills Page hit@5 and Manual pass; part 2 the four RAGAS columns; part 3 cost per query and p95 latency; part 4 the judge and adversarial columns. The four RAGAS columns are scored by the judge model named in the provenance table and are LLM-judged estimates.
+`—` means not measured yet, never a stand-in value. Part 1 fills Page hit@5 and Manual pass; part 2 the four RAGAS columns; part 3 cost per query and p95 latency; part 4 the judge and adversarial columns. The four RAGAS columns are scored by the judge model named in the provenance table and are LLM-judged estimates. Cost per query and p95 latency come from the trace stored with each question, at AWS list prices in us-west-2, with p95 taken by nearest rank over the run's questions.
 
 ## Detail
 
@@ -96,11 +96,11 @@ Only rows with a re-ranker are in this table. It is computed from the top 5 each
 
 ### What produced each row
 
-| Configuration | Mode | Chunk set | k | Candidates | RRF k | Reranker | Embedding model | Answer model | Judge model | Commit | Run |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | hybrid | fixed-220w | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | us.anthropic.claude-sonnet-5 | 26561f9 (dirty) | 20260926T150426Z_hybrid |
-| hybrid+rerank | hybrid | fixed-220w | 5 | 20 | 60 | cohere.rerank-v3-5:0 | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | us.anthropic.claude-sonnet-5 | d59a1bc (dirty) | 20260928T041004Z_hybrid+rerank |
-| sections | hybrid | sections | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | us.anthropic.claude-sonnet-5 | d59a1bc (dirty) | 20260928T041711Z_sections |
-| sections+rerank | hybrid | sections | 5 | 20 | 60 | cohere.rerank-v3-5:0 | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | us.anthropic.claude-sonnet-5 | d59a1bc (dirty) | 20260928T042438Z_sections+rerank |
-| vector-only | vector | fixed-220w | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | us.anthropic.claude-sonnet-5 | d59a1bc (dirty) | 20260928T043127Z_vector-only |
-| lexical-only | lexical | fixed-220w | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | us.anthropic.claude-sonnet-5 | d59a1bc (dirty) | 20260928T043706Z_lexical-only |
+| Configuration | Mode | Chunk set | k | Candidates | RRF k | Reranker | Embedding model | Answer model | Fallback model | Judge model | Tracing | Commit | Run |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| hybrid | hybrid | fixed-220w | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | — | us.anthropic.claude-sonnet-5 | — | 26561f9 (dirty) | 20260926T150426Z_hybrid |
+| hybrid+rerank | hybrid | fixed-220w | 5 | 20 | 60 | cohere.rerank-v3-5:0 | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | — | us.anthropic.claude-sonnet-5 | — | d59a1bc (dirty) | 20260928T041004Z_hybrid+rerank |
+| sections | hybrid | sections | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | — | us.anthropic.claude-sonnet-5 | — | d59a1bc (dirty) | 20260928T041711Z_sections |
+| sections+rerank | hybrid | sections | 5 | 20 | 60 | cohere.rerank-v3-5:0 | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | — | us.anthropic.claude-sonnet-5 | — | d59a1bc (dirty) | 20260928T042438Z_sections+rerank |
+| vector-only | vector | fixed-220w | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | — | us.anthropic.claude-sonnet-5 | — | d59a1bc (dirty) | 20260928T043127Z_vector-only |
+| lexical-only | lexical | fixed-220w | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | — | us.anthropic.claude-sonnet-5 | — | d59a1bc (dirty) | 20260928T043706Z_lexical-only |
