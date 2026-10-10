@@ -13,6 +13,8 @@ Langfuse ingests spans in the background, so a trace can take a few seconds to a
 ends. A trace that is missing or does not match yet is asked for again, for up to `--wait`
 seconds, before it counts as a problem.
 
+For a run traced to Langfuse, a question with no trace id stored is a problem too.
+
 Exit codes: 0 when every trace matched, 1 when one did not match or never appeared, or when the
 three Langfuse settings are missing, or when the file holds no trace id to look for, 2 when the
 file cannot be read.
@@ -148,6 +150,13 @@ def verify(
         for row in result.questions
         if row.trace is not None and row.trace.trace_id is not None
     }
+    # A run traced to Langfuse has an id for every question; one without it means the sink
+    # failed to open that trace, which "all match" over fewer traces would hide.
+    untraced = (
+        [row.id for row in result.questions if row.id not in traced]
+        if result.config.tracing == "langfuse"
+        else []
+    )
     pending = dict(traced)
     latest: dict[str, list[str]] = {}
     for attempt in range(attempts):
@@ -162,6 +171,10 @@ def verify(
         if not pending:
             break
     problems = [
+        f"{question_id}  no trace id was stored, so Langfuse cannot be asked about it"
+        for question_id in untraced
+    ]
+    problems += [
         f"{question_id}  trace {traced[question_id].trace_id}  {problem}"
         for question_id in pending
         for problem in latest[question_id]
