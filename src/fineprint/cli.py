@@ -207,6 +207,12 @@ def open_retriever(settings: Settings, pool, tracer: Tracer) -> Retriever:
     )
 
 
+def first_line(error: Exception) -> str:
+    """The first line of an error's message, or its class name when the message is empty."""
+    lines = str(error).splitlines()
+    return lines[0] if lines and lines[0] else error.__class__.__name__
+
+
 def report_failure(error: Exception, settings: Settings) -> int:
     """Print one clear line about a failure the caller can do something about.
 
@@ -219,15 +225,15 @@ def report_failure(error: Exception, settings: Settings) -> int:
     elif isinstance(error, psycopg.Error | PoolTimeout):
         print(
             f"ERROR: cannot query {describe_database(settings.database_url)}: "
-            f"{str(error).splitlines()[0]}\n"
+            f"{first_line(error)}\n"
             "Start it with: docker compose up -d --wait, then: fineprint init-db && "
             "fineprint ingest",
             file=sys.stderr,
         )
     elif isinstance(error, ProviderTimeoutError | ProviderUnavailableError):
-        print(f"ERROR: model provider unavailable: {str(error).splitlines()[0]}", file=sys.stderr)
+        print(f"ERROR: model provider unavailable: {first_line(error)}", file=sys.stderr)
     else:
-        print(f"ERROR: {type(error).__name__}: {str(error).splitlines()[0]}", file=sys.stderr)
+        print(f"ERROR: {type(error).__name__}: {first_line(error)}", file=sys.stderr)
     return 1
 
 

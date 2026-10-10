@@ -434,6 +434,18 @@ def test_an_unavailable_model_provider_is_reported_in_one_plain_line(offline_ser
     assert captured.err == "ERROR: model provider unavailable: throttled by Bedrock\n"
 
 
+@pytest.mark.parametrize("error", [ProviderUnavailableError(""), RuntimeError("")])
+def test_a_failure_with_an_empty_message_is_still_reported(offline_service, capsys, error):
+    offline_service.retriever = FakeRetriever([], error=error)
+
+    exit_code = main(["ask", "How much is the Part B premium?"])
+
+    err = capsys.readouterr().err
+    assert exit_code == 1
+    assert err.endswith(f"{type(error).__name__}\n")
+    assert "Traceback" not in err
+
+
 def test_ask_prints_the_answer_its_citations_and_what_the_call_cost(offline_service, capsys):
     exit_code = main(["ask", "How much is the Part B premium in 2026?"])
 

@@ -36,8 +36,7 @@ class FallbackChatModel:
 
     The reply from the fallback says `fallback_used=True` and carries the fallback's own model
     id. If the fallback fails too, its error is raised with the primary's as the cause, so a
-    log shows both. A turn from `complete_with_tools` has no such flag; its `model` field and
-    the trace's fallback-marked generation span say which model answered.
+    log shows both. A tool turn from the fallback carries the same flag.
     """
 
     def __init__(
@@ -77,6 +76,4 @@ class FallbackChatModel:
                 result = call(self.fallback)
             except Exception as fallback_error:
                 raise fallback_error from primary_error
-        if isinstance(result, LLMResult):
-            return replace(result, fallback_used=True)  # type: ignore[return-value]
-        return result
+        return replace(result, fallback_used=True)  # type: ignore[type-var]

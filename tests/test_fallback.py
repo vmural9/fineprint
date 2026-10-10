@@ -116,6 +116,7 @@ def test_tool_calls_fall_back_the_same_way():
     )
 
     assert turn.model == "us.anthropic.claude-sonnet-5"
+    assert turn.fallback_used is True
     assert primary.calls == ["complete_with_tools"]
     assert fallback.calls == ["complete_with_tools"]
 
