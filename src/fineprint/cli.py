@@ -30,13 +30,15 @@ from fineprint.config import Settings
 from fineprint.db import connection_pool, describe_database, init_db
 from fineprint.editions import EDITIONS
 from fineprint.ingest import IngestError, ingest
-from fineprint.providers.factory import get_chat_model, get_embedder, get_reranker
+from fineprint.providers.factory import get_chat_model, get_embedder, get_reranker, get_tracer
 from fineprint.retrieval import (
     SEARCH_MODES,
     EditionNotIngestedError,
     RetrievedChunk,
     Retriever,
+    summarize_chunks,
 )
+from fineprint.tracing import Tracer
 
 # The default address `fineprint serve` listens on. Localhost, because this service has no
 # authentication and reads a database; putting it on a network is a deployment decision.
@@ -140,7 +142,23 @@ def print_hits(chunks: Sequence[RetrievedChunk]) -> None:
         print()
 
 
-def print_answer(answered: AnswerResponse) -> None:
+def print_trace(
+    cost_usd: float | None, fallback: bool, trace_id: str | None, trace_url: str | None
+) -> None:
+    """What the question cost, whether the backup model answered, and where its trace is.
+
+    The trace lines appear only when there is a trace to point at: with tracing off there is
+    no id, and with tracing to Langfuse the link needs a lookup that can fail.
+    """
+    cost = "unknown" if cost_usd is None else f"${cost_usd:.4f}"
+    print(f"cost: {cost}  ·  fallback: {'yes' if fallback else 'no'}")
+    if trace_id is not None:
+        print(f"trace: {trace_id}")
+    if trace_url is not None:
+        print(f"       {trace_url}")
+
+
+def print_answer(answered: AnswerResponse, trace_url: str | None = None) -> None:
     """The answer, what it rests on, and what the call cost."""
     width = text_width()
     print()
@@ -174,11 +192,18 @@ def print_answer(answered: AnswerResponse) -> None:
         f"{answered.model}  ·  {answered.input_tokens:,} in / {answered.output_tokens:,} out "
         f"tokens  ·  {answered.latency_ms / 1000:.1f}s"
     )
+    print_trace(answered.cost_usd, answered.fallback_used, answered.trace_id, trace_url)
 
 
-def open_retriever(settings: Settings, pool) -> Retriever:
+def open_retriever(settings: Settings, pool, tracer: Tracer) -> Retriever:
     """A retriever on this pool, with the configured embedder and re-ranker behind it."""
-    return Retriever(pool, get_embedder(settings), settings, reranker=get_reranker(settings))
+    return Retriever(
+        pool,
+        get_embedder(settings, tracer),
+        settings,
+        reranker=get_reranker(settings, tracer),
+        tracer=tracer,
+    )
 
 
 def report_failure(error: Exception, settings: Settings) -> int:
@@ -207,41 +232,64 @@ def run_search(args: argparse.Namespace) -> int:
     """Show the chunks a question retrieves, and where each one came from."""
     settings = Settings()
     top_k = settings.retrieval_top_k if args.top_k is None else args.top_k
+    tracer = get_tracer(settings)
 
     try:
-        with connection_pool(settings.database_url) as pool:
-            chunks = open_retriever(settings, pool).search(
-                args.question, mode=args.mode, top_k=top_k
-            )
-    except Exception as error:
-        return report_failure(error, settings)
+        try:
+            with (
+                connection_pool(settings.database_url) as pool,
+                tracer.trace("search", input=args.question, tags=["cli"]) as trace,
+            ):
+                chunks = open_retriever(settings, pool, tracer).search(
+                    args.question, mode=args.mode, top_k=top_k
+                )
+                trace.set_output(summarize_chunks(chunks))
+        except Exception as error:
+            return report_failure(error, settings)
 
-    print(f'search: "{args.question}"')
-    print(f"mode:   {args.mode}    top-k: {top_k}    edition: {settings.corpus_edition}")
-    print()
-    print_hits(chunks)
-    return 0
+        print(f'search: "{args.question}"')
+        print(f"mode:   {args.mode}    top-k: {top_k}    edition: {settings.corpus_edition}")
+        print()
+        print_hits(chunks)
+        record = trace.record
+        print_trace(
+            record.cost_usd,
+            any(call.fallback for call in record.calls),
+            record.trace_id,
+            tracer.trace_url(record.trace_id) if record.trace_id else None,
+        )
+        return 0
+    finally:
+        tracer.shutdown()
 
 
 def run_ask(args: argparse.Namespace) -> int:
     """Answer a question from the handbook and show what the answer rests on."""
     settings = Settings()
     top_k = settings.retrieval_top_k if args.top_k is None else args.top_k
+    tracer = get_tracer(settings)
 
     try:
-        with connection_pool(settings.database_url) as pool:
-            answered = answer_question(
-                args.question,
-                open_retriever(settings, pool),
-                get_chat_model(settings),
-                top_k=top_k,
-            )
-    except Exception as error:
-        return report_failure(error, settings)
+        try:
+            with (
+                connection_pool(settings.database_url) as pool,
+                tracer.trace("ask", input=args.question, tags=["cli"]),
+            ):
+                answered = answer_question(
+                    args.question,
+                    open_retriever(settings, pool, tracer),
+                    get_chat_model(settings, tracer),
+                    top_k=top_k,
+                    tracer=tracer,
+                )
+        except Exception as error:
+            return report_failure(error, settings)
 
-    print(f'question: "{args.question}"')
-    print_answer(answered)
-    return 0
+        print(f'question: "{args.question}"')
+        print_answer(answered, tracer.trace_url(answered.trace_id) if answered.trace_id else None)
+        return 0
+    finally:
+        tracer.shutdown()
 
 
 def run_serve(args: argparse.Namespace) -> int:

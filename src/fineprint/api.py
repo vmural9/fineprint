@@ -9,11 +9,14 @@ right passage was even retrieved, and this is how you look.
 `GET /healthz` says whether the database is reachable and how many chunks of the configured
 edition are in it, so a deployment can tell "up" from "up but empty".
 
-The expensive objects — the connection pool, the embedder, the re-ranker, the retriever and the
-chat model — are built once in the lifespan handler and shared by every request. Building an AWS
-client takes long enough that doing it per request would be felt, and the pool exists precisely
-so connections are not opened per request either. Each one is reachable through a dependency
-function, which is the seam the tests replace.
+The expensive objects — the connection pool, the tracer, the embedder, the re-ranker, the
+retriever and the chat model — are built once in the lifespan handler and shared by every
+request. Building an AWS client takes long enough that doing it per request would be felt, and
+the pool exists precisely so connections are not opened per request either. Each one is
+reachable through a dependency function, which is the seam the tests replace.
+
+`/ask` and `/search` each open a trace tagged `api`, and `/ask` returns the trace's id and what
+the question cost. The tracer is flushed and shut down when the service stops.
 
 Status codes follow the spec: 422 when the request itself is wrong, 502 when a provider
 fails, 503 when the database is unreachable or the edition has not been ingested. An
@@ -37,7 +40,13 @@ from fineprint.config import Settings
 from fineprint.db import connection_pool, describe_database
 from fineprint.providers import factory
 from fineprint.providers.base import ChatModel
-from fineprint.retrieval import EditionNotIngestedError, Retriever, SearchMode
+from fineprint.retrieval import (
+    EditionNotIngestedError,
+    Retriever,
+    SearchMode,
+    summarize_chunks,
+)
+from fineprint.tracing import Tracer
 
 logger = logging.getLogger(__name__)
 
@@ -117,32 +126,42 @@ class HealthResponse(BaseModel):
     edition: int
     chunk_set: str
     chunks: int
+    tracing: str  # "none", or "langfuse" when every trace is also sent to Langfuse
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> Iterator[None]:
-    """Open the pool and build the models once, and close the pool on the way out.
+    """Open the pool and build the models once, and close the pool and the tracer on the way out.
 
     Nothing here reaches the network: `ConnectionPool` connects in the background and every
     provider builds its AWS client on first use. A service whose database is down still
     starts, and says so through `/healthz` rather than by refusing to boot.
     """
     settings = Settings()
-    with connection_pool(settings.database_url) as pool:
-        embedder = factory.get_embedder(settings)
-        app.state.settings = settings
-        app.state.pool = pool
-        app.state.retriever = Retriever(
-            pool, embedder, settings, reranker=factory.get_reranker(settings)
-        )
-        app.state.chat = factory.get_chat_model(settings)
-        logger.info(
-            "serving edition %s, chunk set %s, from %s",
-            settings.corpus_edition,
-            settings.chunk_set,
-            describe_database(settings.database_url),
-        )
-        yield
+    tracer = factory.get_tracer(settings)
+    try:
+        with connection_pool(settings.database_url) as pool:
+            app.state.settings = settings
+            app.state.pool = pool
+            app.state.tracer = tracer
+            app.state.retriever = Retriever(
+                pool,
+                factory.get_embedder(settings, tracer),
+                settings,
+                reranker=factory.get_reranker(settings, tracer),
+                tracer=tracer,
+            )
+            app.state.chat = factory.get_chat_model(settings, tracer)
+            logger.info(
+                "serving edition %s, chunk set %s, from %s, tracing: %s",
+                settings.corpus_edition,
+                settings.chunk_set,
+                describe_database(settings.database_url),
+                settings.tracing_provider,
+            )
+            yield
+    finally:
+        tracer.shutdown()
 
 
 app = FastAPI(
@@ -169,6 +188,11 @@ def get_retriever(request: Request) -> Retriever:
     return request.app.state.retriever
 
 
+def get_tracer(request: Request) -> Tracer:
+    """The shared tracer, which every endpoint opens its trace with."""
+    return request.app.state.tracer
+
+
 def get_chat(request: Request) -> ChatModel:
     """The shared chat model."""
     return request.app.state.chat
@@ -178,6 +202,7 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 PoolDep = Annotated[ConnectionPool, Depends(get_pool)]
 RetrieverDep = Annotated[Retriever, Depends(get_retriever)]
 ChatDep = Annotated[ChatModel, Depends(get_chat)]
+TracerDep = Annotated[Tracer, Depends(get_tracer)]
 
 
 def first_line(error: Exception) -> str:
@@ -209,7 +234,7 @@ def provider_failures(doing: str) -> Iterator[None]:
 
 
 @app.post("/search", summary="Find the handbook passages a question is about")
-def search(request: SearchRequest, retriever: RetrieverDep) -> SearchResponse:
+def search(request: SearchRequest, retriever: RetrieverDep, tracer: TracerDep) -> SearchResponse:
     """Return the ranked chunks for a query, without asking a model anything.
 
     `lexical_rank` and `vector_rank` say which retriever found each chunk and where it stood
@@ -218,8 +243,12 @@ def search(request: SearchRequest, retriever: RetrieverDep) -> SearchResponse:
     hybrid mode. When a re-ranker is configured, a hybrid search is re-ranked, and
     `rerank_score` holds the re-ranker's score, which is also `score`; otherwise it is null.
     """
-    with provider_failures("search"):
+    with (
+        provider_failures("search"),
+        tracer.trace("search", input=request.query, tags=["api"]) as trace,
+    ):
         chunks = retriever.search(request.query, mode=request.mode, top_k=request.top_k)
+        trace.set_output(summarize_chunks(chunks))
     return SearchResponse(
         query=request.query,
         mode=request.mode,
@@ -228,15 +257,25 @@ def search(request: SearchRequest, retriever: RetrieverDep) -> SearchResponse:
 
 
 @app.post("/ask", summary="Answer a Medicare question from the handbook, with citations")
-def ask(request: AskRequest, retriever: RetrieverDep, chat: ChatDep) -> AnswerResponse:
+def ask(
+    request: AskRequest, retriever: RetrieverDep, chat: ChatDep, tracer: TracerDep
+) -> AnswerResponse:
     """Retrieve, answer, and check the citations.
 
     An answer the handbook does not support comes back with `found_in_handbook: false` and a
     pointer to somewhere that does know. That is a successful request, not an error.
     """
-    with provider_failures("answering"):
+    with (
+        provider_failures("answering"),
+        tracer.trace("ask", input=request.question, tags=["api"]),
+    ):
         return answer_question(
-            request.question, retriever, chat, top_k=request.top_k, mode="hybrid"
+            request.question,
+            retriever,
+            chat,
+            top_k=request.top_k,
+            mode="hybrid",
+            tracer=tracer,
         )
 
 
@@ -262,4 +301,5 @@ def healthz(settings: SettingsDep, pool: PoolDep) -> HealthResponse:
         edition=settings.corpus_edition,
         chunk_set=settings.chunk_set,
         chunks=chunks,
+        tracing=settings.tracing_provider,
     )

@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 
 from fineprint.providers.base import ChatModel
 from fineprint.retrieval import RetrievedChunk, Retriever, SearchMode
+from fineprint.tracing import Tracer
 
 # What the model is told before it sees the question. Every rule here exists because the
 # alternative is an answer that looks right and is not: a remembered premium from a previous
@@ -126,6 +127,10 @@ class AnswerResponse(BaseModel):
     `dropped_citations` and `retrieved_chunk_ids` are here so a failure is visible rather
     than silent: the first counts citations that named an excerpt the model was never given,
     the second says what it actually had to work with.
+
+    `cost_usd` is what the question cost in US dollars, and `trace_id` names its trace in the
+    tracing tool; both are None when the answer was not traced, or when a price is unknown.
+    `fallback_used` is true when the model that answered is the backup, not the configured one.
     """
 
     question: str
@@ -139,6 +144,9 @@ class AnswerResponse(BaseModel):
     input_tokens: int
     output_tokens: int
     latency_ms: float
+    cost_usd: float | None = None
+    trace_id: str | None = None
+    fallback_used: bool = False
 
 
 def collapse_whitespace(text: str) -> str:
@@ -209,6 +217,7 @@ def answer_question(
     *,
     mode: SearchMode = "hybrid",
     chunks: Sequence[RetrievedChunk] | None = None,
+    tracer: Tracer | None = None,
 ) -> AnswerResponse:
     """Search the handbook for `question`, ask the model, and check what it says.
 
@@ -220,7 +229,29 @@ def answer_question(
     passages instead: no search happens, `mode` and `top_k` go unused, and `retrieved_chunk_ids`
     reports the given chunks. This is what lets the eval runner retrieve once per question and
     have the answer and the retrieval metrics describe the same evidence.
+
+    With a `tracer`, the whole thing runs inside an "ask" trace, or inside the one the caller
+    already opened, and the response carries the trace's id and what the trace cost so far.
     """
+    if tracer is None:
+        return _answer(question, retriever, chat, top_k, mode, chunks)
+    with tracer.trace("ask", input=question) as trace:
+        response = _answer(question, retriever, chat, top_k, mode, chunks)
+        trace.set_output(response.answer)
+        return response.model_copy(
+            update={"trace_id": trace.trace_id, "cost_usd": trace.record.cost_usd}
+        )
+
+
+def _answer(
+    question: str,
+    retriever: Retriever,
+    chat: ChatModel,
+    top_k: int | None,
+    mode: SearchMode,
+    chunks: Sequence[RetrievedChunk] | None,
+) -> AnswerResponse:
+    """`answer_question` without the trace."""
     if chunks is None:
         chunks = retriever.search(question, mode=mode, top_k=top_k)
     chunks = list(chunks)
@@ -243,4 +274,5 @@ def answer_question(
         input_tokens=result.input_tokens,
         output_tokens=result.output_tokens,
         latency_ms=result.latency_ms,
+        fallback_used=result.fallback_used,
     )

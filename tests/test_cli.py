@@ -19,8 +19,10 @@ from fineprint.cli import ChunkSetNotIngestedError, PageChunk, main
 from fineprint.editions import EDITIONS
 from fineprint.ingest import IngestError, IngestSummary, WordStats, store
 from fineprint.pdf import Page
+from fineprint.pricing import Price
 from fineprint.retrieval import EditionNotIngestedError, RetrievedChunk
-from tests.fakes import FakeChatModel, FakeEmbedder
+from fineprint.tracing import TracedChatModel, Tracer
+from tests.fakes import FakeChatModel, FakeEmbedder, RecordingSink
 
 FAKE_DATABASE_URL = "postgresql://fineprint:hunter2@db.example:5432/handbook"
 
@@ -44,7 +46,7 @@ def no_dot_env(monkeypatch, tmp_path):
 def offline_ingest(monkeypatch, no_dot_env) -> list[tuple[int, str]]:
     """Stub the pool and the embedder, and record the edition and chunk set ingest was given."""
     monkeypatch.setenv("DATABASE_URL", FAKE_DATABASE_URL)
-    monkeypatch.setattr("fineprint.cli.get_embedder", lambda settings: FakeEmbedder())
+    monkeypatch.setattr("fineprint.cli.get_embedder", lambda settings, tracer=None: FakeEmbedder())
 
     @contextmanager
     def fake_pool(database_url: str) -> Iterator[None]:
@@ -223,6 +225,20 @@ RERANKED = [
     replace(CHUNKS[0], rank=2, score=0.0216, rerank_score=0.0216),
 ]
 
+# A price for the fake chat model: 900 input and 120 output tokens at $1 and $2 per million
+# dollars comes to $0.00114, which the command prints as $0.0011.
+FAKE_PRICES = {
+    "fake-chat-model": Price(
+        model="fake-chat-model",
+        input_per_million=1.0,
+        output_per_million=2.0,
+        per_unit=None,
+        unit="tokens",
+        source_url="https://prices.example/list.json",
+        retrieved_on="2026-10-10",
+    )
+}
+
 PREMIUM_DRAFT = DraftAnswer(
     answer="The standard Part B premium in 2026 is $202.90 a month.",
     found_in_handbook=True,
@@ -257,7 +273,7 @@ def offline_service(monkeypatch, no_dot_env) -> SimpleNamespace:
     command has built its retriever, `service.reranker` is the re-ranker it handed over.
     """
     monkeypatch.setenv("DATABASE_URL", FAKE_DATABASE_URL)
-    monkeypatch.setattr("fineprint.cli.get_embedder", lambda settings: FakeEmbedder())
+    monkeypatch.setattr("fineprint.cli.get_embedder", lambda settings, tracer=None: FakeEmbedder())
 
     @contextmanager
     def fake_pool(database_url: str) -> Iterator[None]:
@@ -265,15 +281,25 @@ def offline_service(monkeypatch, no_dot_env) -> SimpleNamespace:
 
     monkeypatch.setattr("fineprint.cli.connection_pool", fake_pool)
 
-    service = SimpleNamespace(retriever=FakeRetriever(CHUNKS), draft=PREMIUM_DRAFT)
+    # The sink records what the command traces. The chat model is wrapped as the factory would
+    # wrap it, so the command has a cost to print.
+    sink = RecordingSink(trace_id="trace-from-the-sink")
+    tracer = Tracer(sink)
+    service = SimpleNamespace(
+        retriever=FakeRetriever(CHUNKS), draft=PREMIUM_DRAFT, sink=sink, tracer=tracer
+    )
 
-    def build_retriever(pool, embedder, settings, reranker=None) -> FakeRetriever:
+    def build_retriever(pool, embedder, settings, reranker=None, tracer=None) -> FakeRetriever:
         service.reranker = reranker
         return service.retriever
 
     monkeypatch.setattr("fineprint.cli.Retriever", build_retriever)
+    monkeypatch.setattr("fineprint.cli.get_tracer", lambda settings: tracer)
     monkeypatch.setattr(
-        "fineprint.cli.get_chat_model", lambda settings: FakeChatModel(service.draft)
+        "fineprint.cli.get_chat_model",
+        lambda settings, tracer=None: TracedChatModel(
+            FakeChatModel(service.draft), tracer, prices=FAKE_PRICES
+        ),
     )
     return service
 
@@ -410,6 +436,56 @@ def test_ask_prints_the_answer_its_citations_and_what_the_call_cost(offline_serv
     assert "fake-chat-model" in printed
     assert "900" in printed and "120" in printed, "the token counts"
     assert "ms" in printed or "s" in printed, "the latency"
+
+
+def test_ask_prints_the_cost_the_fallback_flag_and_the_trace(offline_service, capsys):
+    main(["ask", "How much is the Part B premium in 2026?"])
+
+    printed = capsys.readouterr().out
+    assert "cost: $0.0011" in printed
+    assert "fallback: no" in printed
+    assert "trace: trace-from-the-sink" in printed
+    assert "https://tracing.example/traces/trace-from-the-sink" in printed
+    (trace,) = offline_service.sink.traces
+    assert (trace.name, trace.tags) == ("ask", ["cli"])
+    assert trace.input == "How much is the Part B premium in 2026?"
+
+
+def test_search_prints_the_cost_and_the_trace_too(offline_service, capsys):
+    main(["search", "How much is the Part B premium in 2026?"])
+
+    printed = capsys.readouterr().out
+    assert "cost: $0.0000" in printed
+    assert "fallback: no" in printed
+    assert "trace: trace-from-the-sink" in printed
+    (trace,) = offline_service.sink.traces
+    assert (trace.name, trace.tags) == ("search", ["cli"])
+
+
+def test_a_command_without_a_trace_id_prints_no_trace_line(offline_service, capsys, monkeypatch):
+    monkeypatch.setattr("fineprint.cli.get_tracer", lambda settings: Tracer())
+
+    main(["search", "How much is the Part B premium in 2026?"])
+
+    printed = capsys.readouterr().out
+    assert "cost:" in printed
+    assert "trace:" not in printed
+
+
+@pytest.mark.parametrize("command", ["search", "ask"])
+def test_every_command_shuts_the_tracer_down_before_exiting(offline_service, command):
+    main([command, "Does Medicare cover hearing aids?"])
+
+    assert offline_service.sink.shutdowns == 1
+
+
+def test_a_failing_command_still_shuts_the_tracer_down(offline_service, capsys):
+    offline_service.retriever = FakeRetriever([], error=RuntimeError("Bedrock is throttling"))
+
+    exit_code = main(["ask", "Does Medicare cover hearing aids?"])
+
+    assert exit_code == 1
+    assert offline_service.sink.shutdowns == 1
 
 
 def test_ask_marks_a_quote_it_could_not_find_in_the_chunk(offline_service, capsys):
