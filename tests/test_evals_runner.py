@@ -27,11 +27,20 @@ from evals.run_golden_set import (
     run_questions,
     summary_lines,
 )
+from evals.score import tool_contexts
 from fineprint.answer import Citation, DraftAnswer, answer_question
 from fineprint.config import Settings
 from fineprint.pricing import Cost
+from fineprint.providers.base import ToolCall
+from fineprint.retrieval import RetrievedChunk
 from fineprint.tracing import CallRecord, Tracer, TraceRecord
-from tests.fakes import FakeChatModel, FakeEmbedder, FakeReranker, RecordingSink
+from tests.fakes import (
+    FakeChatModel,
+    FakeEmbedder,
+    FakeReranker,
+    RecordingSink,
+    ScriptedToolModel,
+)
 
 
 @dataclass(frozen=True)
@@ -995,3 +1004,80 @@ def test_the_answer_function_traces_the_chat_model_and_joins_the_questions_trace
     assert built == [tracer]
     assert response.trace_id == "trace-7"
     assert [root.name for root in sink.traces] == ["eval-question"], "one trace, not two"
+
+
+def test_the_tools_answer_function_answers_through_the_agent_and_stores_its_tool_calls(
+    monkeypatch,
+):
+    """With `tools`, a question is answered by `answer_with_tools` on the run's date and tracer.
+    What `_as_json` stores is what `evals.score` reads its tool contexts from."""
+    hospital = RetrievedChunk(
+        chunk_id=74,
+        ordinal=73,
+        section="Inpatient hospital care",
+        page_start=27,
+        page_end=27,
+        text=(
+            "Days 61–90: You pay $434 each day. Days 91–150: You pay $868 each day while using "
+            "your 60 lifetime reserve days."
+        ),
+        score=0.0325,
+        rank=1,
+        lexical_rank=1,
+        vector_rank=1,
+        fused_rank=1,
+        rerank_score=None,
+    )
+    lookup = ToolCall(
+        id="toolu_lookup",
+        name="lookup_cost_figure",
+        arguments={"figure": "part_a_coinsurance_days_61_90"},
+    )
+    record = ToolCall(
+        id="toolu_answer",
+        name="record_answer",
+        arguments={
+            "answer": "On day 80 he pays $434 each day (page 27).",
+            "found_in_handbook": True,
+            "citations": [{"chunk_id": 74, "quote": "Days 61–90: You pay $434 each day."}],
+            "confidence": "high",
+        },
+    )
+    chat = ScriptedToolModel([[lookup], [record]])
+    monkeypatch.setattr(
+        "fineprint.providers.factory.get_chat_model", lambda settings, tracer=None: chat
+    )
+    sink = RecordingSink(trace_id="trace-9")
+    tracer = Tracer(sink)
+    settings = Settings(agent_max_tool_turns=3)
+    answer_fn = build_answer_function(
+        settings, FakeRetriever({}), tools=True, today=date(2026, 10, 12), tracer=tracer
+    )
+    item = golden("q023", question="What does he pay a day after 80 days in the hospital?")
+
+    (row,) = run_questions(
+        [item],
+        FakeRetriever({item.question: [hospital]}),
+        answer_fn,
+        mode="hybrid",
+        top_k=5,
+        report=lambda line: None,
+        tracer=tracer,
+        run_id="r",
+        config_name="agent",
+    )
+
+    assert row.error is None
+    assert "Today's date: 2026-10-12." in chat.calls[0].messages[0]["content"]
+    (tool_call,) = row.answer["tool_calls"]
+    assert tool_call["name"] == "lookup_cost_figure" and tool_call["error"] is None
+    assert tool_call["source_text"]
+    assert row.answer["turns"] == 2
+    assert tool_contexts(row) == [tool_call["source_text"]], "scoring reads the stored shape"
+    assert row.answer["trace_id"] == "trace-9"
+    (root,) = sink.traces
+    assert root.name == "eval-question", "the agent joins the runner's trace"
+    assert [child.kind for child in root.children] == ["agent"]
+    assert row.trace is not None and ("agent", "tools") in [
+        (call.kind, call.name) for call in row.trace.calls
+    ]
