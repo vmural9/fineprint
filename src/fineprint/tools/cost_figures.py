@@ -1,9 +1,11 @@
-"""The 2026 dollar amounts the handbook prints, as a table a model can look up instead of recall.
+"""2026 dollar amounts from the handbook, as a table a model can look up instead of recall.
 
 A model asked "what is the Part B premium?" tends to answer from memory, and remembered Medicare
-amounts are usually last year's. This table holds every single-valued 2026 amount the handbook
-prints for Original Medicare and Part D on pages 23, 27, 29, 30, 83 and 88, each with the sentence
-it was copied from, so an answer that uses one can quote the page it came from.
+amounts are usually last year's. This table holds the single-valued 2026 amounts printed on pages
+23, 27, 29, 30, 53, 76, 83, 84 and 88, each with the sentence it was copied from, so an answer
+that uses one can quote the page it came from. It is not every amount the handbook prints: page
+22's Part A premium, for one, gives two amounts without saying who pays which, and stays in the
+retrieved passages.
 
 Amounts are `Decimal`, never `float`: $202.90 stays $202.90 through any arithmetic. There is no
 Part D deductible here on purpose: the handbook says what a deductible is but never prints the
@@ -70,8 +72,9 @@ _FIGURES = (
         amount=Decimal("1736"),
         unit="per benefit period",
         applies_to=(
-            "What someone pays for inpatient hospital care under Part A each time a new benefit "
-            "period starts, before Medicare starts to pay."
+            "What someone pays under Part A each time a new benefit period starts, before "
+            "Medicare starts to pay, for inpatient hospital care and, unless already paid in the "
+            "same benefit period, skilled nursing facility care (page 29)."
         ),
         page=27,
         source_text=(
@@ -151,6 +154,57 @@ _FIGURES = (
         source_text=(
             "Plans can’t charge you more than $35 for a one-month supply of each Part "
             "D-covered insulin you take, and you don’t have to pay a deductible for insulin."
+        ),
+    ),
+    CostFigure(
+        key="part_d_national_base_beneficiary_premium",
+        label="Part D national base beneficiary premium",
+        amount=Decimal("38.99"),
+        unit="in 2026",
+        applies_to=(
+            "The base the Part D late enrollment penalty is computed from (1% of it for each "
+            "full month without creditable drug coverage); it is not a premium anyone pays as "
+            "such, and page 85 works the same example with it."
+        ),
+        page=84,
+        source_text=(
+            "Currently, the late enrollment penalty is calculated by multiplying 1% of the "
+            "“national base beneficiary premium” ($38.99 in 2026) by the number of full, "
+            "uncovered months that you were eligible but didn’t have Medicare drug coverage "
+            "(Part D) and went without other creditable prescription drug coverage. The final "
+            "amount is rounded to the nearest $.10 and added to your monthly premium."
+        ),
+    ),
+    CostFigure(
+        key="medigap_high_deductible_plan_deductible",
+        label="Medigap high-deductible Plan F and G deductible",
+        amount=Decimal("2950"),
+        unit="in 2026",
+        applies_to=(
+            "What someone with the high-deductible version of Medigap Plan F or Plan G, offered "
+            "in some states, pays in Medicare-covered costs before the policy pays anything."
+        ),
+        page=76,
+        source_text=(
+            "Plans F and G also offer a high-deductible plan in some states. You must pay "
+            "Medicare-covered costs (coinsurance, copayments, and deductibles) up to the "
+            "deductible amount of $2,950 in 2026 before your policy pays anything."
+        ),
+    ),
+    CostFigure(
+        key="part_b_immunosuppressive_drug_premium",
+        label="Part B immunosuppressive drug benefit premium",
+        amount=Decimal("121.60"),
+        unit="per month",
+        applies_to=(
+            "The monthly premium of the immunosuppressive drug benefit for someone whose "
+            "Medicare, held because of End-Stage Renal Disease, ended 36 months after a kidney "
+            "transplant; it can be higher based on income."
+        ),
+        page=53,
+        source_text=(
+            "You’ll pay a monthly premium of $121.60 (or higher based on your income) and $283 "
+            "deductible for this immunosuppressive drug benefit in 2026."
         ),
     ),
 )

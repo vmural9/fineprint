@@ -35,13 +35,15 @@ TOOL_SPECS: list[ToolSpec] = [
     ToolSpec(
         name="lookup_cost_figure",
         description=(
-            "Look up a 2026 Medicare dollar amount exactly as the handbook prints it: the Part B "
-            "premium or deductible, the Part A deductible and hospital coinsurance, skilled "
-            "nursing facility coinsurance, the Part D out-of-pocket cap, or the insulin cap. "
+            "Look up one of the listed 2026 Medicare dollar amounts exactly as the handbook "
+            "prints it: the Part B premium and deductible, the Part A deductible and hospital "
+            "coinsurance, skilled nursing facility coinsurance, the Part D out-of-pocket cap, "
+            "the insulin cap, the Part D national base beneficiary premium, the Medigap "
+            "high-deductible plan deductible, and the immunosuppressive drug benefit premium. "
             "Call it whenever an answer needs one of these amounts, or arithmetic on one, "
             "instead of relying on memory. The amount comes back as an exact decimal string, "
-            "with the page and the handbook sentence it comes from. If the amount asked about "
-            "is not in the list, the handbook does not print it."
+            "with the page and the handbook sentence it comes from. The list is not every "
+            "amount the handbook prints; any other amount must come from the retrieved passages."
         ),
         input_schema={
             "type": "object",

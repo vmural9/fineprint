@@ -28,6 +28,9 @@ EXPECTED_KEYS = {
     "snf_coinsurance_days_21_100",
     "part_d_out_of_pocket_cap",
     "insulin_monthly_cap",
+    "part_d_national_base_beneficiary_premium",
+    "medigap_high_deductible_plan_deductible",
+    "part_b_immunosuppressive_drug_premium",
 }
 
 
@@ -75,6 +78,9 @@ def test_the_amounts_are_the_ones_the_handbook_prints():
         "snf_coinsurance_days_21_100": (Decimal("217"), 29),
         "part_d_out_of_pocket_cap": (Decimal("2100"), 83),
         "insulin_monthly_cap": (Decimal("35"), 88),
+        "part_d_national_base_beneficiary_premium": (Decimal("38.99"), 84),
+        "medigap_high_deductible_plan_deductible": (Decimal("2950"), 76),
+        "part_b_immunosuppressive_drug_premium": (Decimal("121.60"), 53),
     }
 
 
@@ -86,10 +92,28 @@ def test_amounts_are_exact_decimals_so_the_premium_keeps_its_cents():
 
 
 def test_every_figure_says_what_it_costs_per_and_who_pays_it():
-    units = {"per month", "per year", "per benefit period", "per day", "per one-month supply"}
+    units = {
+        "per month",
+        "per year",
+        "per benefit period",
+        "per day",
+        "per one-month supply",
+        "in 2026",  # the page gives the year but no period
+    }
     for figure in COST_FIGURES.values():
         assert figure.unit in units, figure.key
         assert figure.label and figure.applies_to and figure.source_text, figure.key
+
+
+def test_the_base_premium_is_described_as_the_penalty_base_not_a_premium_anyone_pays():
+    applies_to = COST_FIGURES["part_d_national_base_beneficiary_premium"].applies_to
+
+    assert "late enrollment penalty" in applies_to
+    assert "not a premium" in applies_to
+
+
+def test_the_immunosuppressive_premium_says_it_can_be_higher_with_income():
+    assert "higher" in COST_FIGURES["part_b_immunosuppressive_drug_premium"].applies_to
 
 
 def test_there_is_no_part_d_deductible_because_the_handbook_prints_none():
