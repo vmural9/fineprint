@@ -5,6 +5,7 @@ stands in for Titan. The questions and reference answers are the golden set's ow
 passages are its evidence quotes, so every figure below was copied from the handbook.
 """
 
+import json
 import re
 import shutil
 from pathlib import Path
@@ -744,17 +745,25 @@ def test_build_judge_is_the_bedrock_chat_model_on_the_model_and_region_given():
 # --- the agent row: tool results are passages too ----------------------------------
 
 
-def tool_call(source_text: str | None, *, error: str | None = None) -> dict:
+def tool_call(
+    output: dict | None, *, error: str | None = None, source_text: str | None = None
+) -> dict:
     """One stored tool call, with the fields scoring reads."""
     return {
         "name": "lookup_cost_figure",
         "arguments": {"figure": "part_b_deductible"},
-        "output": None if error else {"figure": "part_b_deductible"},
+        "output": None if error else output,
         "error": error,
         "pages": [27],
         "source_text": source_text,
         "latency_ms": 0.1,
     }
+
+
+# What the model was sent for a successful call: the stored output, as JSON. The sentence is the
+# golden set's page 27 evidence quote, standing in for the figure tool's verbatim source text.
+RESULT = {"figure": "part_b_deductible", "source_text": DEDUCTIBLE}
+RESULT_AS_SENT = json.dumps(RESULT, ensure_ascii=False)
 
 
 def agent_row(*calls: dict) -> QuestionResult:
@@ -779,9 +788,10 @@ def test_tool_results_are_appended_to_the_passages_every_judge_reads(wired, tmp_
     path = results_file(
         tmp_path,
         agent_row(
-            tool_call(DEDUCTIBLE),
-            tool_call(SNF_DAYS, error="unknown figure"),  # failed: the model never saw it
-            tool_call(None),  # nothing quoted: nothing to add
+            # The stored source text is not in what the model was sent, so it is not scored.
+            tool_call(RESULT, source_text=SNF_DAYS),
+            tool_call(None, error="unknown figure"),  # failed: no result to score
+            tool_call(None),  # no result at all: nothing to add
         ),
     )
     scripted = judge(three_passage_script())
@@ -789,7 +799,7 @@ def test_tool_results_are_appended_to_the_passages_every_judge_reads(wired, tmp_
 
     assert main([str(path)]) == 0
 
-    passages = numbered_passages([PREMIUM, IRMAA, DEDUCTIBLE])
+    passages = numbered_passages([PREMIUM, IRMAA, RESULT_AS_SENT])
     recall_request, precision_request, claims_check = (
         next(call.user for call in scripted.calls if call.schema is schema)
         for schema in (SentenceVerdicts, PassageVerdicts, ClaimVerdicts)
@@ -797,6 +807,7 @@ def test_tool_results_are_appended_to_the_passages_every_judge_reads(wired, tmp_
     assert passages in recall_request
     assert passages in precision_request
     assert passages in claims_check
+    assert SNF_DAYS not in recall_request, "the model never saw the stored source text"
     (scored,) = load(path).questions
     assert scored.scoring_detail["tool_contexts"] == 1
     assert len(scored.scoring_detail["context_precision"]["passages"]) == 3
@@ -831,7 +842,7 @@ def test_a_row_without_tool_calls_is_scored_and_recorded_as_before(wired, tmp_pa
 
 
 def test_explain_shows_a_tool_result_among_the_passages(wired, tmp_path, capsys):
-    path = results_file(tmp_path, agent_row(tool_call(DEDUCTIBLE)))
+    path = results_file(tmp_path, agent_row(tool_call(RESULT)))
     wired(judge(three_passage_script()))
     main([str(path)])
     capsys.readouterr()
