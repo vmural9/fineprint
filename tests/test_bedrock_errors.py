@@ -3,10 +3,12 @@
 import pytest
 from botocore.exceptions import (
     ClientError,
+    ConnectionClosedError,
     ConnectTimeoutError,
     EndpointConnectionError,
     ProxyConnectionError,
     ReadTimeoutError,
+    ResponseStreamingError,
 )
 from botocore.exceptions import ConnectionError as BotocoreConnectionError
 
@@ -31,6 +33,8 @@ MAPPED = [
     (EndpointConnectionError(endpoint_url="https://bedrock.test"), ProviderUnavailableError),
     (ProxyConnectionError(proxy_url="https://proxy.test"), ProviderUnavailableError),
     (BotocoreConnectionError(error="reset"), ProviderUnavailableError),
+    (ConnectionClosedError(endpoint_url="https://bedrock.test"), ProviderUnavailableError),
+    (ResponseStreamingError(error="stream broke"), ProviderUnavailableError),
     (client_error("ModelTimeoutException"), ProviderTimeoutError),
     (client_error("ThrottlingException"), ProviderUnavailableError),
     (client_error("ServiceUnavailableException"), ProviderUnavailableError),

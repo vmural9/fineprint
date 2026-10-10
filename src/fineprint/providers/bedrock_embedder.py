@@ -133,9 +133,19 @@ class BedrockEmbedder:
             )
         except BOTO_ERRORS as error:
             raise map_boto_error(error, self.model) from error
+        # The body is a stream, so reading it can time out or lose the connection just as the
+        # call can; that failure is mapped the same way.
         try:
-            payload = json.loads(response["body"].read())
-        except (KeyError, TypeError, ValueError) as error:
+            raw = response["body"].read()
+        except BOTO_ERRORS as error:
+            raise map_boto_error(error, self.model) from error
+        except (KeyError, TypeError) as error:
+            raise EmbeddingResponseError(
+                f"{self.model} returned a response with no readable body: {error!r}"
+            ) from error
+        try:
+            payload = json.loads(raw)
+        except (TypeError, ValueError) as error:
             raise EmbeddingResponseError(
                 f"{self.model} returned a body this code could not read as JSON: {error}"
             ) from error

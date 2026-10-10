@@ -251,10 +251,27 @@ def test_a_reply_with_no_tool_call_says_what_came_back_instead():
 REQUEST = httpx.Request("POST", "https://bedrock-runtime.us-west-2.amazonaws.com/v1/messages")
 
 
+# The SDK's own class for each status it has one for; the base class for the rest.
+STATUS_CLASSES = {
+    400: anthropic.BadRequestError,
+    401: anthropic.AuthenticationError,
+    403: anthropic.PermissionDeniedError,
+    404: anthropic.NotFoundError,
+    413: anthropic.RequestTooLargeError,
+    429: anthropic.RateLimitError,
+    500: anthropic.InternalServerError,
+    503: anthropic.ServiceUnavailableError,
+    504: anthropic.DeadlineExceededError,
+    529: anthropic.OverloadedError,
+}
+
+
 def status_error(status: int) -> anthropic.APIStatusError:
-    """The error the SDK raises for an HTTP status, as its own subclass for that status."""
+    """The error the SDK raises for an HTTP status: its subclass for that status where it has one
+    (408, 424 and 502 have none, so those are the base class)."""
     response = httpx.Response(status, request=REQUEST)
-    return anthropic.APIStatusError(f"HTTP {status}", response=response, body=None)
+    error_class = STATUS_CLASSES.get(status, anthropic.APIStatusError)
+    return error_class(f"HTTP {status}", response=response, body=None)
 
 
 # One case per row of the mapping: what the SDK raises after its own retries, and what the
