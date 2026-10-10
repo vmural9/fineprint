@@ -276,12 +276,22 @@ STEP_NOTE = (
     "the question's whole time."
 )
 
-TOOL_COLUMNS = ("Configuration", "Tool", "Questions that called it", "Calls", "Errors")
+NEITHER_TOOL = "(neither tool)"
+
+TOOL_COLUMNS = (
+    "Configuration",
+    "Tool",
+    "Questions that called it",
+    "Which questions",
+    "Calls",
+    "Errors",
+)
 
 TOOL_NOTE = (
     "Only rows that offered the model the two tools are in this table, counted from the tool "
     "calls in each question's trace. A call that errored is one the tool refused, for example "
-    "for an argument it does not know."
+    "for an argument it does not know. The last line of a row is the questions that called "
+    "neither tool; a question without a trace is in no line."
 )
 
 PROVENANCE_COLUMNS = (
@@ -601,13 +611,15 @@ def _step_rows(results: Mapping[str, RunResult]) -> list[list[str]]:
 
 
 def _tool_rows(results: Mapping[str, RunResult]) -> list[list[str]]:
-    """For each row that offered the tools, one line per tool: the questions that called it, the
-    calls, and the calls that errored.
+    """For each row that offered the tools, one line per tool: how many questions called it,
+    which, the calls, and the calls that errored; then a line for the questions that called
+    neither tool.
 
     Counted from the `tool` calls in each question's trace, the same source as "tool calls per
     query", so the two tables cannot disagree: a call's name is the tool's name, and a call with
     an `error` is one that errored. Both tools are listed even when a run never called one, so
-    an unused tool shows as zero rather than as missing.
+    an unused tool shows as zero rather than as missing. A question without a trace is in none
+    of the lists, since nothing says what it called.
     """
     rows = []
     for name, result in _ordered(results):
@@ -615,29 +627,39 @@ def _tool_rows(results: Mapping[str, RunResult]) -> list[list[str]]:
             continue
         calls: dict[str, int] = {tool.name: 0 for tool in TOOL_SPECS}
         errors = dict(calls)
-        questions = dict(calls)
+        callers: dict[str, list[str]] = {tool.name: [] for tool in TOOL_SPECS}
+        neither: list[str] = []
         for question in result.questions:
-            tool_calls = [
-                call
-                for call in (question.trace.calls if question.trace else [])
-                if call.kind == "tool"
-            ]
+            if question.trace is None:
+                continue
+            tool_calls = [call for call in question.trace.calls if call.kind == "tool"]
             for call in tool_calls:
                 calls[call.name] = calls.get(call.name, 0) + 1
                 errors[call.name] = errors.get(call.name, 0) + (call.error is not None)
-            for tool_name in {call.name for call in tool_calls}:
-                questions[tool_name] = questions.get(tool_name, 0) + 1
+            for tool_name in sorted({call.name for call in tool_calls}):
+                callers.setdefault(tool_name, []).append(question.id)
+            if not tool_calls:
+                neither.append(question.id)
         for tool_name in sorted(calls):
             rows.append(
                 [
                     name,
                     tool_name,
-                    str(questions[tool_name]),
+                    str(len(callers[tool_name])),
+                    _ids(callers[tool_name]),
                     str(calls[tool_name]),
                     str(errors[tool_name]),
                 ]
             )
+        rows.append(
+            [name, NEITHER_TOOL, str(len(neither)), _ids(neither), NOT_MEASURED, NOT_MEASURED]
+        )
     return rows
+
+
+def _ids(question_ids: Sequence[str]) -> str:
+    """Question ids for a table cell, or a dash when there are none."""
+    return ", ".join(question_ids) if question_ids else NOT_MEASURED
 
 
 def _run_rows(results: Mapping[str, RunResult]) -> list[list[str]]:
