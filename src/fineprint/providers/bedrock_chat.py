@@ -27,10 +27,17 @@ was settled by live probes against Bedrock in us-west-2, on 2026-09-21 unless da
 import time
 from typing import Any
 
+import anthropic
 from anthropic import AnthropicBedrock
 from pydantic import BaseModel, ValidationError
 
-from fineprint.providers.base import LLMResult
+from fineprint.providers.base import (
+    LLMResult,
+    ProviderError,
+    ProviderRequestError,
+    ProviderTimeoutError,
+    ProviderUnavailableError,
+)
 
 # The single tool the model answers through. The name shows up in its refusals, so it reads
 # like something a careful assistant would call.
@@ -42,6 +49,15 @@ MAX_TOKENS = 16_000
 # The SDK retries throttling and 5xx with exponential backoff; Bedrock throttles readily
 # during an eval run, so allow a few more attempts than the SDK's default of 2.
 MAX_RETRIES = 4
+
+# Seconds one request may take. The slowest answer in the part 2 runs took 16.6, so 60 leaves
+# room for a long one and still fails a hung connection quickly. Settings carry the real value.
+DEFAULT_TIMEOUT = 60.0
+
+# HTTP statuses that mean the model took too long, and the other ones that mean "not now"
+# rather than "not this request". Every status from 500 up is also "not now".
+_TIMEOUT_STATUSES = {408, 504}
+_UNAVAILABLE_STATUSES = {424, 429}
 
 
 class ChatModelError(RuntimeError):
@@ -75,12 +91,14 @@ class BedrockChatModel:
         client: Any | None = None,
         max_tokens: int = MAX_TOKENS,
         max_retries: int = MAX_RETRIES,
+        timeout: float = DEFAULT_TIMEOUT,
     ):
         """Take the model and region from settings; take a client only in tests."""
         self.model = model
         self.region = region
         self.max_tokens = max_tokens
         self.max_retries = max_retries
+        self.timeout = timeout
         self._client = client
 
     @property
@@ -89,11 +107,49 @@ class BedrockChatModel:
 
         `AnthropicBedrock` is the standard runtime endpoint. `AnthropicBedrockMantle` serves
         Haiku 4.5 in us-west-2 but 404s for Opus 5, which is why it is not used here.
-        Credentials come from the usual AWS chain, so only the region is passed in.
+        Credentials come from the usual AWS chain, so only the region is passed in. The SDK
+        retries throttling and server errors `max_retries` times, and gives up on any one
+        request after `timeout` seconds.
         """
         if self._client is None:
-            self._client = AnthropicBedrock(aws_region=self.region, max_retries=self.max_retries)
+            self._client = AnthropicBedrock(
+                aws_region=self.region, max_retries=self.max_retries, timeout=self.timeout
+            )
         return self._client
+
+    def _create(self, **request: Any) -> Any:
+        """Send one request, turning the SDK's failures into `ProviderError`s.
+
+        By the time the SDK raises, its own retries have run out, so what arrives here is what
+        the caller should act on: wait and fall back, or fix the request.
+        """
+        try:
+            return self.client.messages.create(**request)
+        except anthropic.APIError as error:
+            mapped = self._provider_error(error)
+            if mapped is None:
+                raise
+            raise mapped from error
+
+    def _provider_error(self, error: anthropic.APIError) -> ProviderError | None:
+        """The `ProviderError` for an SDK failure, or None when it is not about the provider."""
+        # APITimeoutError is a kind of APIConnectionError, so it is checked first.
+        if isinstance(error, anthropic.APITimeoutError):
+            return ProviderTimeoutError(f"{self.model} timed out after {self.timeout:g}s: {error}")
+        if isinstance(error, anthropic.APIConnectionError):
+            return ProviderUnavailableError(f"{self.model} could not be reached: {error}")
+        if isinstance(error, anthropic.APIStatusError):
+            status = error.status_code
+            if status in _TIMEOUT_STATUSES:
+                return ProviderTimeoutError(f"{self.model} timed out (HTTP {status}): {error}")
+            if status in _UNAVAILABLE_STATUSES or status >= 500:
+                return ProviderUnavailableError(
+                    f"{self.model} is unavailable (HTTP {status}): {error}"
+                )
+            return ProviderRequestError(
+                f"{self.model} refused the request (HTTP {status}): {error}"
+            )
+        return None
 
     def complete_structured[T: BaseModel](
         self, system: str, user: str, schema: type[T]
@@ -112,7 +168,7 @@ class BedrockChatModel:
 
         # Two attempts: the first ask, then one retry carrying the validation error back.
         for _ in range(2):
-            response = self.client.messages.create(
+            response = self._create(
                 model=self.model,
                 max_tokens=self.max_tokens,
                 system=system,
