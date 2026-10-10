@@ -7,7 +7,13 @@ hand-written fake never would.
 
 import boto3
 import pytest
-from botocore.exceptions import ClientError, EndpointConnectionError, ReadTimeoutError
+from botocore.exceptions import (
+    ClientError,
+    ConnectionClosedError,
+    EndpointConnectionError,
+    ReadTimeoutError,
+    ResponseStreamingError,
+)
 from botocore.stub import Stubber
 
 from fineprint.providers.base import (
@@ -218,6 +224,8 @@ class RaisingAgentRuntime:
     [
         (ReadTimeoutError(endpoint_url="https://bedrock.test"), ProviderTimeoutError),
         (EndpointConnectionError(endpoint_url="https://bedrock.test"), ProviderUnavailableError),
+        (ConnectionClosedError(endpoint_url="https://bedrock.test"), ProviderUnavailableError),
+        (ResponseStreamingError(error="stream broke"), ProviderUnavailableError),
         (
             ClientError({"Error": {"Code": "BadGatewayException", "Message": "x"}}, "Rerank"),
             ProviderUnavailableError,
@@ -227,7 +235,14 @@ class RaisingAgentRuntime:
             ProviderRequestError,
         ),
     ],
-    ids=["timeout", "unreachable", "bad gateway", "access denied"],
+    ids=[
+        "timeout",
+        "unreachable",
+        "connection closed",
+        "stream broke",
+        "bad gateway",
+        "access denied",
+    ],
 )
 def test_a_boto3_failure_becomes_a_provider_error_naming_the_model(error, expected):
     reranker = BedrockReranker(model=MODEL, region="us-west-2", client=RaisingAgentRuntime(error))

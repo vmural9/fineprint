@@ -11,7 +11,7 @@ import time
 
 import boto3
 import pytest
-from botocore.exceptions import ClientError, ReadTimeoutError
+from botocore.exceptions import ClientError, ConnectionClosedError, ReadTimeoutError
 from botocore.stub import Stubber
 
 from fineprint.providers.base import (
@@ -193,6 +193,7 @@ class RaisingBedrockRuntime:
     ("error", "expected"),
     [
         (ReadTimeoutError(endpoint_url="https://bedrock.test"), ProviderTimeoutError),
+        (ConnectionClosedError(endpoint_url="https://bedrock.test"), ProviderUnavailableError),
         (
             ClientError({"Error": {"Code": "ThrottlingException", "Message": "slow"}}, "Invoke"),
             ProviderUnavailableError,
@@ -202,7 +203,7 @@ class RaisingBedrockRuntime:
             ProviderRequestError,
         ),
     ],
-    ids=["timeout", "throttled", "rejected"],
+    ids=["timeout", "connection closed", "throttled", "rejected"],
 )
 @pytest.mark.parametrize("many", [False, True], ids=["one text", "many texts, in the pool"])
 def test_a_boto3_failure_becomes_a_provider_error_naming_the_model(error, expected, many):
@@ -212,6 +213,29 @@ def test_a_boto3_failure_becomes_a_provider_error_naming_the_model(error, expect
         embedder.embed(["a", "bb"] if many else ["a"])
 
     assert type(raised.value) is expected
+    assert MODEL in str(raised.value)
+    assert raised.value.__cause__ is error
+
+
+class BrokenBody:
+    """A response body whose stream fails when it is read, as a dropped connection does."""
+
+    def __init__(self, error: Exception):
+        self.error = error
+
+    def read(self) -> bytes:
+        raise self.error
+
+
+def test_a_failure_while_reading_the_response_body_is_mapped_too():
+    error = ReadTimeoutError(endpoint_url="https://bedrock.test")
+    client = FakeBedrockRuntime()
+    client.invoke_model = lambda **kwargs: {"body": BrokenBody(error)}
+    embedder = BedrockEmbedder(model=MODEL, region="us-west-2", client=client)
+
+    with pytest.raises(ProviderTimeoutError) as raised:
+        embedder.embed(["a"])
+
     assert MODEL in str(raised.value)
     assert raised.value.__cause__ is error
 
