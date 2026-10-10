@@ -626,3 +626,32 @@ def test_the_time_by_step_table_is_left_out_while_no_row_has_a_trace():
     }
 
     assert "Time by step" not in render(untraced, STAMP, golden=GOLDEN)
+
+
+def test_a_partial_run_never_becomes_a_row_even_when_it_is_the_latest_file(tmp_path):
+    from evals.results import load, save
+
+    full = load(FIXTURES / "20260921T031500Z_hybrid.json")
+    partial = replace(
+        full,
+        run_id="20260922T000000Z_hybrid",
+        created_at="2026-09-22T00:00:00Z",
+        config=replace(full.config, only=["q001"]),
+        questions=full.questions[:1],
+    )
+    save(full, tmp_path / "full.json")
+    save(partial, tmp_path / "partial.json")
+
+    latest = latest_per_config(tmp_path)
+
+    assert latest["hybrid"].run_id == full.run_id
+    assert len(latest["hybrid"].questions) == len(full.questions)
+
+
+def test_a_directory_holding_only_partial_runs_has_no_rows(tmp_path):
+    from evals.results import load, save
+
+    full = load(FIXTURES / "20260921T031500Z_hybrid.json")
+    save(replace(full, config=replace(full.config, only=["q001"])), tmp_path / "partial.json")
+
+    assert latest_per_config(tmp_path) == {}

@@ -549,6 +549,7 @@ def test_the_command_writes_a_results_file_and_prints_the_summary(wired, tmp_pat
         "fallback_model": "us.anthropic.claude-sonnet-5",
         "tracing": "none",
         "langfuse_base_url": None,
+        "only": None,
     }
     assert record["corpus"] == {"edition": 2026, "sha256": "d7a341bc3d2d"}
     assert record["golden_set"]["count"] == 2
@@ -1081,3 +1082,88 @@ def test_the_tools_answer_function_answers_through_the_agent_and_stores_its_tool
     assert row.trace is not None and ("agent", "tools") in [
         (call.kind, call.name) for call in row.trace.calls
     ]
+
+
+# --- --only: a few questions as a smoke test ----------------------------------------
+
+
+def three_golden_items():
+    return [
+        golden("q001"),
+        golden("q006", question="What does Part D cover?"),
+        golden("q009", question="What is a Medigap policy?"),
+    ]
+
+
+def test_only_runs_the_named_questions_in_golden_set_order(wired, tmp_path):
+    items = three_golden_items()
+    retriever = FakeRetriever({item.question: ON_PAGE_23 for item in items})
+    wired(items, retriever, answer_fn=lambda q, c: answered(q))
+
+    exit_code = main(
+        ["--config", "sections", "--only", "q009,q001", "--results-dir", str(tmp_path)]
+    )
+
+    assert exit_code == 0
+    assert [call[0] for call in retriever.calls] == [items[0].question, items[2].question]
+    (written,) = list(tmp_path.glob("*.json"))
+    record = json.loads(written.read_text(encoding="utf-8"))
+    assert [row["id"] for row in record["questions"]] == ["q001", "q009"]
+    assert record["config"]["only"] == ["q001", "q009"]
+    assert record["golden_set"]["count"] == 3, "the golden set is still the whole file"
+
+
+def test_a_full_run_records_no_subset(wired, tmp_path):
+    items = three_golden_items()
+    wired(items, FakeRetriever({}), answer_fn=lambda q, c: answered(q))
+
+    main(["--config", "sections", "--results-dir", str(tmp_path)])
+
+    (written,) = list(tmp_path.glob("*.json"))
+    assert json.loads(written.read_text(encoding="utf-8"))["config"]["only"] is None
+
+
+def test_only_refuses_an_id_the_golden_set_does_not_have(wired, tmp_path, capsys):
+    items = three_golden_items()
+    retriever = FakeRetriever({})
+    wired(items, retriever, answer_fn=lambda q, c: answered(q))
+
+    exit_code = main(
+        ["--config", "sections", "--only", "q001,q999", "--results-dir", str(tmp_path)]
+    )
+
+    assert exit_code == 1
+    assert "q999" in capsys.readouterr().err
+    assert retriever.calls == [] and list(tmp_path.glob("*.json")) == []
+
+
+def test_only_refuses_an_empty_list(wired, tmp_path, capsys):
+    wired(three_golden_items(), FakeRetriever({}))
+
+    assert main(["--config", "sections", "--only", " , ", "--results-dir", str(tmp_path)]) == 1
+    assert "at least one question id" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("spelling", ["default", "dotted"])
+def test_only_refuses_the_default_results_directory(spelling, wired, capsys):
+    from evals.results import RESULTS_DIR
+
+    items = three_golden_items()
+    retriever = FakeRetriever({})
+    wired(items, retriever, answer_fn=lambda q, c: answered(q))
+    directory = RESULTS_DIR if spelling == "default" else RESULTS_DIR / ".." / "results"
+    before = sorted(RESULTS_DIR.glob("*.json"))
+
+    exit_code = main(["--config", "sections", "--only", "q001", "--results-dir", str(directory)])
+
+    assert exit_code == 1
+    assert "other than evals/results" in capsys.readouterr().err
+    assert retriever.calls == []
+    assert sorted(RESULTS_DIR.glob("*.json")) == before, "nothing was written"
+
+
+def test_only_without_a_results_dir_is_refused(wired, capsys):
+    wired(three_golden_items(), FakeRetriever({}))
+
+    assert main(["--config", "sections", "--only", "q001"]) == 1
+    assert "other than evals/results" in capsys.readouterr().err

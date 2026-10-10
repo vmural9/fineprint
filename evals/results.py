@@ -70,6 +70,7 @@ class RunConfig:
     fallback_model: str | None = None  # the model answers fell back to; None: there was none
     tracing: str | None = None  # the tracing provider the run used; None on an older file
     langfuse_base_url: str | None = None  # where the traces went, when they went to Langfuse
+    only: list[str] | None = None  # the question ids of a partial run; None: the whole golden set
 
 
 @dataclass(frozen=True, slots=True)
@@ -276,10 +277,14 @@ def latest_per_config(directory: Path = RESULTS_DIR) -> dict[str, RunResult]:
     """The most recent run of each configuration, keyed by configuration name.
 
     This is what the scoreboard shows: one row per configuration, the last time it was measured.
-    The name inside the file decides, not the file name, so renaming a file changes nothing.
+    The name inside the file decides, not the file name, so renaming a file changes nothing. A
+    partial run (`config.only` is set) is a smoke test, not a measurement of the configuration,
+    so it never becomes a row, wherever its file ended up.
     """
     latest: dict[str, RunResult] = {}
     for result in load_all(directory):  # oldest first, so the last one to land wins
+        if result.config.only is not None:
+            continue
         latest[result.config.name] = result
     return latest
 
