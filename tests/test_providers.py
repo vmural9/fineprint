@@ -7,7 +7,21 @@ import pytest
 from pydantic import BaseModel
 
 from fineprint.config import Settings
-from fineprint.providers.base import ChatModel, Embedder, Reranker, RerankResult
+from fineprint.providers.base import (
+    ChatModel,
+    Embedder,
+    EmbeddingResult,
+    LLMResult,
+    ProviderError,
+    ProviderRequestError,
+    ProviderTimeoutError,
+    ProviderUnavailableError,
+    Reranker,
+    RerankResult,
+    ToolCall,
+    ToolSpec,
+    ToolTurn,
+)
 from fineprint.providers.bedrock_chat import BedrockChatModel
 from fineprint.providers.bedrock_embedder import BedrockEmbedder
 from fineprint.providers.bedrock_reranker import BedrockReranker
@@ -42,6 +56,24 @@ def test_get_chat_model_builds_the_bedrock_chat_model_from_settings():
 
     assert isinstance(chat, BedrockChatModel)
     assert chat.model == "us.anthropic.claude-opus-5"
+
+
+def test_the_factory_passes_the_timeout_and_retry_settings_into_the_constructors():
+    settings = Settings(
+        llm_timeout_seconds=45,
+        llm_max_retries=2,
+        aws_timeout_seconds=7,
+        aws_max_attempts=3,
+        reranker_provider="bedrock",
+    )
+
+    chat = get_chat_model(settings)
+    embedder = get_embedder(settings)
+    reranker = get_reranker(settings)
+
+    assert (chat.timeout, chat.max_retries) == (45, 2)
+    assert (embedder.timeout, embedder.max_attempts) == (7, 3)
+    assert (reranker.timeout, reranker.max_attempts) == (7, 3)
 
 
 def test_an_unknown_embedding_provider_names_the_ones_that_exist():
@@ -124,6 +156,49 @@ def test_the_fakes_satisfy_the_protocols():
     assert reranker.rerank("premium", ["deductible", "premium"], top_n=1) == [
         RerankResult(index=1, score=1.0)
     ]
+
+
+def test_the_fake_embedder_reports_the_word_count_as_its_input_tokens():
+    result = FakeEmbedder().embed(["Part B premium", "deductible", ""])
+
+    assert isinstance(result, EmbeddingResult)
+    assert result.input_tokens == 4  # three words, one word, none
+    assert len(result.vectors) == 3
+    assert result.vectors[0] == FakeEmbedder().embed_query("Part B premium")
+    assert FakeEmbedder().embed_documents(["Part B premium"]) == result.vectors[:1]
+
+
+def test_the_provider_errors_share_one_base_and_the_dataclasses_hold_their_fields():
+    for error in (ProviderTimeoutError, ProviderUnavailableError, ProviderRequestError):
+        assert issubclass(error, ProviderError)
+    assert not issubclass(ProviderTimeoutError, ProviderUnavailableError)
+
+    spec = ToolSpec(
+        name="lookup", description="Look something up.", input_schema={"type": "object"}
+    )
+    call = ToolCall(id="toolu_1", name="lookup", arguments={"key": "part_b_premium"})
+    turn = ToolTurn(
+        tool_calls=[call],
+        content=[],
+        model="m",
+        input_tokens=1,
+        output_tokens=2,
+        latency_ms=3.0,
+        stop_reason="tool_use",
+    )
+    assert (spec.name, call.arguments, turn.tool_calls[0].id) == (
+        "lookup",
+        {"key": "part_b_premium"},
+        "toolu_1",
+    )
+
+
+def test_an_llm_result_defaults_to_no_fallback():
+    result = LLMResult(
+        parsed=Answer(text="x"), model="m", input_tokens=1, output_tokens=1, latency_ms=1.0
+    )
+
+    assert result.fallback_used is False
 
 
 def test_the_fake_embedder_gives_the_same_vector_for_the_same_text_twice():

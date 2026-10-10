@@ -19,19 +19,34 @@ class UnknownProviderError(ValueError):
 def _bedrock_embedder(settings: Settings) -> Embedder:
     from fineprint.providers.bedrock_embedder import BedrockEmbedder
 
-    return BedrockEmbedder(model=settings.embedding_model, region=settings.aws_region)
+    return BedrockEmbedder(
+        model=settings.embedding_model,
+        region=settings.aws_region,
+        timeout=settings.aws_timeout_seconds,
+        max_attempts=settings.aws_max_attempts,
+    )
 
 
 def _bedrock_chat_model(settings: Settings) -> ChatModel:
     from fineprint.providers.bedrock_chat import BedrockChatModel
 
-    return BedrockChatModel(model=settings.llm_model, region=settings.aws_region)
+    return BedrockChatModel(
+        model=settings.llm_model,
+        region=settings.aws_region,
+        max_retries=settings.llm_max_retries,
+        timeout=settings.llm_timeout_seconds,
+    )
 
 
 def _bedrock_reranker(settings: Settings) -> Reranker:
     from fineprint.providers.bedrock_reranker import BedrockReranker
 
-    return BedrockReranker(model=settings.reranker_model, region=settings.aws_region)
+    return BedrockReranker(
+        model=settings.reranker_model,
+        region=settings.aws_region,
+        timeout=settings.aws_timeout_seconds,
+        max_attempts=settings.aws_max_attempts,
+    )
 
 
 EMBEDDERS: dict[str, Callable[[Settings], Embedder]] = {"bedrock": _bedrock_embedder}
