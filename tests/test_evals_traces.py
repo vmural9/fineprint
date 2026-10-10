@@ -67,7 +67,7 @@ def question(question_id: str, record: TraceRecord | None) -> QuestionResult:
     )
 
 
-def results_file(tmp_path, *rows: QuestionResult):
+def results_file(tmp_path, *rows: QuestionResult, tracing: str | None = None):
     result = RunResult(
         run_id="20261010T100000Z_agent",
         created_at="2026-10-10T10:00:00Z",
@@ -81,6 +81,7 @@ def results_file(tmp_path, *rows: QuestionResult):
             rrf_k=60,
             embedding_model="amazon.titan-embed-text-v2:0",
             llm_model="us.anthropic.claude-opus-5",
+            tracing=tracing,
         ),
         corpus=Corpus(edition=2026, sha256="abc"),
         golden_set=GoldenSetInfo(sha256="def", count=len(rows)),
@@ -135,8 +136,8 @@ class FakeApi:
         return SimpleNamespace(data=page, meta=SimpleNamespace(cursor=more))
 
 
-def verified(tmp_path, api, *rows, **options):
-    return traces.verify(load(results_file(tmp_path, *rows)), api, **options)
+def verified(tmp_path, api, *rows, tracing=None, **options):
+    return traces.verify(load(results_file(tmp_path, *rows, tracing=tracing)), api, **options)
 
 
 # --- what is compared ---------------------------------------------------------------
@@ -294,6 +295,41 @@ def test_a_question_without_a_trace_id_is_not_looked_up(tmp_path):
 
     assert outcome.checked == 1
     assert len(api.calls) == 1
+
+
+def test_in_a_langfuse_run_a_question_without_a_trace_id_is_a_problem(tmp_path):
+    api = FakeApi({"t1": matching()})
+
+    outcome = verified(
+        tmp_path,
+        api,
+        question("q001", trace_record("t1")),
+        question("q002", trace_record(None)),
+        question("q003", None),
+        tracing="langfuse",
+    )
+
+    assert outcome.problems == [
+        "q002  no trace id was stored, so Langfuse cannot be asked about it",
+        "q003  no trace id was stored, so Langfuse cannot be asked about it",
+    ]
+    assert outcome.checked == 1
+    assert "2 do not match" in traces.summary(outcome, "run")
+
+
+def test_the_command_exits_1_when_a_langfuse_run_lost_a_trace_id(tmp_path, langfuse_api, capsys):
+    path = results_file(
+        tmp_path,
+        question("q001", trace_record("t1")),
+        question("q002", trace_record(None)),
+        tracing="langfuse",
+    )
+    langfuse_api(FakeApi({"t1": matching()}))
+
+    exit_code = traces.main(["verify", str(path), "--wait", "0"])
+
+    assert exit_code == 1
+    assert "q002  no trace id was stored" in capsys.readouterr().out
 
 
 def test_an_unknown_stored_cost_is_compared_on_tokens_only(tmp_path):
