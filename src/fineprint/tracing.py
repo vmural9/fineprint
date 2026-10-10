@@ -581,7 +581,7 @@ class TracedChatModel:
                     turn.output_tokens,
                     prices=self._prices,
                 ),
-                fallback=self._fallback,
+                fallback=self._fallback or turn.fallback_used,
             )
             return turn
 

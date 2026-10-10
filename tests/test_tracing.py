@@ -332,6 +332,23 @@ class ScriptedTools:
         )
 
 
+def test_a_tool_turn_from_the_fallback_is_flagged_on_its_span(tracer: Tracer, sink: RecordingSink):
+    class FallbackTools(ScriptedTools):
+        def complete_with_tools(self, system, messages, tools, *, force_tool=None):
+            turn = super().complete_with_tools(system, messages, tools, force_tool=force_tool)
+            turn.fallback_used = True
+            return turn
+
+    chat = TracedChatModel(FallbackTools(), tracer, prices=PRICES)
+
+    with tracer.trace("agent") as trace:
+        chat.complete_with_tools("system", [], [])
+
+    (call,) = trace.record.calls
+    assert call.fallback is True
+    assert sink.observations[0].fields["metadata"] == {"fallback": True}
+
+
 def test_a_tool_turn_is_one_generation_span_with_the_calls_as_output(
     tracer: Tracer, sink: RecordingSink
 ):

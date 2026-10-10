@@ -113,6 +113,8 @@ class ToolTurn:
     output_tokens: int
     latency_ms: float
     stop_reason: str | None
+    # True when the model that answered is the fallback, not the one that was configured.
+    fallback_used: bool = False
 
 
 class ToolCallingModel(Protocol):
