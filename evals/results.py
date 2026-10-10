@@ -10,6 +10,10 @@ recomputes every aggregate from those per-question rows and stores no summary of
 by time and names the configuration in the file listing. A configuration name may contain `+`
 (`hybrid+rerank`), which is a valid character in both a file name and this join.
 
+Part 3 adds the `TraceRecord` of each question (its latency, its cost and the calls inside it) and
+the knobs a traced or tool-using run was made with; both default to "absent", so the older files
+load unchanged.
+
 Every field part 2 adds defaults to `None`, so the three results files part 1 committed —
 written before any of them existed — still load unchanged; `python -m evals.score` is what fills
 in the scores, in a second pass over a file `run_golden_set` already wrote (decision D4).
@@ -25,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from evals.metrics import Aggregates, QuestionMetrics, aggregate
+from fineprint.tracing import CallRecord, TraceRecord
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RESULTS_DIR = REPO_ROOT / "evals" / "results"
@@ -60,6 +65,11 @@ class RunConfig:
     llm_model: str | None  # None on a --retrieval-only run: no answer model was called
     reranker: str | None = None  # the Bedrock re-ranker model id, or None: this run had none
     rerank_candidates: int | None = None  # candidates it read; None when this run had no re-ranker
+    tools: bool = False  # True when the model could call the two tools (the agent row)
+    tools_today: str | None = None  # the date the enrollment tool treated as today, ISO format
+    fallback_model: str | None = None  # the model answers fell back to; None: there was none
+    tracing: str | None = None  # the tracing provider the run used; None on an older file
+    langfuse_base_url: str | None = None  # where the traces went, when they went to Langfuse
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,6 +144,9 @@ class QuestionResult:
     # per-passage calls `python -m evals.score` made — kept for its `--explain` and for anyone
     # auditing a score. `None` until this question has been scored.
     scoring_detail: dict[str, Any] | None = None
+    # Part 3: what answering this question cost and how long it took, from the tracer. `None` on
+    # a file written before tracing existed.
+    trace: TraceRecord | None = None
 
     @property
     def answered(self) -> bool:
@@ -327,4 +340,15 @@ def _question(row: Any) -> QuestionResult:
         review=Review(**row.get("review", {})),
         error=row.get("error"),
         scoring_detail=row.get("scoring_detail"),
+        trace=_trace(row.get("trace")),
     )
+
+
+def _trace(record: Any) -> TraceRecord | None:
+    """Rebuild a question's trace from its JSON object, or None when it has none."""
+    if record is None:
+        return None
+    if not isinstance(record, dict):
+        raise TypeError(f"expected a trace object, got {type(record).__name__}")
+    calls = [CallRecord(**call) for call in _field(record, "calls")]
+    return TraceRecord(**{**record, "calls": calls})
