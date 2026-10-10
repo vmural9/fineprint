@@ -30,6 +30,7 @@ Exit codes: 0 when every question was scored or skipped, 1 when the judge failed
 """
 
 import argparse
+import json
 import sys
 import textwrap
 from collections.abc import Callable, Sequence
@@ -139,18 +140,22 @@ def passages(row: QuestionResult) -> list[str]:
 
 
 def tool_contexts(row: QuestionResult) -> list[str]:
-    """What the agent's tools handed the model, as extra passages: the handbook sentence behind
-    each tool result that came back without an error.
+    """What the agent's tools handed the model, as extra passages: each successful tool result
+    exactly as the model received it.
 
-    The model saw these sentences when it wrote the answer, so recall, precision and faithfulness
-    count them with the retrieved passages (decision T7). A row whose answer holds no tool calls
-    has none, and neither does a call that failed or whose result quotes nothing.
+    The agent sends a result as `json.dumps(output, ensure_ascii=False)`, and the stored `output`
+    is that same object, so the string is rebuilt here. The figure tool's result carries its
+    verbatim handbook sentence; the enrollment tool's carries computed dates, so the judge can
+    check the answer against what the model was given and not against text it never saw (a call's
+    stored `source_text` is not used). Recall, precision and faithfulness count these with the
+    retrieved passages. A row whose answer holds no tool calls has none, and neither does a call
+    that failed.
     """
     calls = (row.answer or {}).get("tool_calls") or []
     return [
-        call["source_text"]
+        json.dumps(call["output"], ensure_ascii=False)
         for call in calls
-        if call.get("error") is None and call.get("source_text")
+        if call.get("error") is None and call.get("output") is not None
     ]
 
 
@@ -159,9 +164,9 @@ def score_question(
 ) -> Scored:
     """Score one question on every metric that applies to it.
 
-    The passages the judge reads are the retrieved chunks, best first, and then the source text of
-    each tool result; an answer that stores `tool_calls` gets `tool_contexts` in the detail, the
-    number added. Every other row is scored and recorded exactly as before. Whatever
+    The passages the judge reads are the retrieved chunks, best first, and then each tool result
+    as the model received it. An answer that stores `tool_calls` gets `tool_contexts` in the
+    detail, the number added; every other row is scored and recorded exactly as before. Whatever
     the judge or the embedder raises is left to the caller, which records it.
     """
     if not item.answerable:

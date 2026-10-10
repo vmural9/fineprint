@@ -1075,7 +1075,8 @@ def test_the_tools_answer_function_answers_through_the_agent_and_stores_its_tool
     assert tool_call["name"] == "lookup_cost_figure" and tool_call["error"] is None
     assert tool_call["source_text"]
     assert row.answer["turns"] == 2
-    assert tool_contexts(row) == [tool_call["source_text"]], "scoring reads the stored shape"
+    sent = chat.calls[1].messages[-1]["content"]  # the tool results the model was shown
+    assert [block["content"] for block in sent] == tool_contexts(row), "scored as the model saw it"
     assert row.answer["trace_id"] == "trace-9"
     (root,) = sink.traces
     assert root.name == "eval-question", "the agent joins the runner's trace"
