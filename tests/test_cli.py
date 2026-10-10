@@ -20,6 +20,7 @@ from fineprint.editions import EDITIONS
 from fineprint.ingest import IngestError, IngestSummary, WordStats, store
 from fineprint.pdf import Page
 from fineprint.pricing import Price
+from fineprint.providers.base import ProviderUnavailableError
 from fineprint.retrieval import EditionNotIngestedError, RetrievedChunk
 from fineprint.tracing import TracedChatModel, Tracer
 from tests.fakes import FakeChatModel, FakeEmbedder, RecordingSink
@@ -419,6 +420,18 @@ def test_a_provider_failure_is_reported_without_a_traceback(offline_service, cap
     assert exit_code == 1
     assert "Bedrock is throttling" in captured.err
     assert "Traceback" not in captured.err
+
+
+def test_an_unavailable_model_provider_is_reported_in_one_plain_line(offline_service, capsys):
+    offline_service.retriever = FakeRetriever(
+        [], error=ProviderUnavailableError("throttled by Bedrock\nsecond line")
+    )
+
+    exit_code = main(["ask", "How much is the Part B premium?"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err == "ERROR: model provider unavailable: throttled by Bedrock\n"
 
 
 def test_ask_prints_the_answer_its_citations_and_what_the_call_cost(offline_service, capsys):
