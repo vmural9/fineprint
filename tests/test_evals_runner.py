@@ -8,7 +8,7 @@ import json
 import subprocess
 import sys
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 
 import pytest
@@ -549,6 +549,7 @@ def test_the_command_writes_a_results_file_and_prints_the_summary(wired, tmp_pat
         "fallback_model": "us.anthropic.claude-sonnet-5",
         "tracing": "none",
         "langfuse_base_url": None,
+        "agent_max_tool_turns": None,
         "only": None,
     }
     assert record["corpus"] == {"edition": 2026, "sha256": "d7a341bc3d2d"}
@@ -1167,3 +1168,107 @@ def test_only_without_a_results_dir_is_refused(wired, capsys):
 
     assert main(["--config", "sections", "--only", "q001"]) == 1
     assert "other than evals/results" in capsys.readouterr().err
+
+
+# --- a run that would be spoiled is refused before any model call ------------------
+
+
+def refused_run(wired, tmp_path, *arguments) -> tuple[int, FakeRetriever]:
+    items = [golden("q001")]
+    retriever = FakeRetriever({items[0].question: ON_PAGE_23})
+    wired(items, retriever, answer_fn=lambda q, c: answered(q))
+    exit_code = main([*arguments, "--results-dir", str(tmp_path)])
+    return exit_code, retriever
+
+
+@pytest.mark.parametrize("fault", ["chat:timeout", "embedding:unavailable:once", "rerank:timeout"])
+def test_a_run_with_a_fault_switch_set_exits_2_before_any_search(
+    fault, wired, tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setenv("FAULT_INJECTION", fault)
+
+    exit_code, retriever = refused_run(wired, tmp_path, "--config", "sections")
+
+    assert exit_code == 2
+    assert f"FAULT_INJECTION={fault}" in capsys.readouterr().err
+    assert retriever.calls == [] and list(tmp_path.glob("*.json")) == []
+
+
+def test_the_fault_switch_is_refused_with_only_too(wired, tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("FAULT_INJECTION", "chat:timeout")
+
+    exit_code, retriever = refused_run(wired, tmp_path, "--config", "sections", "--only", "q001")
+
+    assert exit_code == 2
+    assert "FAULT_INJECTION" in capsys.readouterr().err
+    assert retriever.calls == []
+
+
+@pytest.mark.parametrize(
+    ("variable", "arguments"),
+    [
+        ("LLM_MODEL", ["--config", "sections"]),
+        ("FALLBACK_LLM_MODEL", ["--config", "sections"]),
+        ("EMBEDDING_MODEL", ["--config", "sections", "--retrieval-only"]),
+    ],
+)
+def test_a_model_with_no_price_exits_2_naming_the_variable_and_the_model(
+    variable, arguments, wired, tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setenv(variable, "some.unpriced-model")
+
+    exit_code, retriever = refused_run(wired, tmp_path, *arguments)
+
+    assert exit_code == 2
+    error = capsys.readouterr().err
+    assert variable in error and "some.unpriced-model" in error and "PRICES" in error
+    assert retriever.calls == []
+
+
+def test_an_unpriced_reranker_is_refused_only_when_the_configuration_reranks(
+    wired, tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setenv("RERANKER_MODEL", "some.unpriced-reranker")
+
+    exit_code, retriever = refused_run(wired, tmp_path, "--config", "sections+rerank")
+    assert exit_code == 0, "settings_for pins the configuration's own re-ranker model"
+
+    # A configuration whose re-ranker is not a priced model is refused.
+    monkeypatch.setitem(
+        CONFIGS, "odd", replace(CONFIGS["sections+rerank"], name="odd", reranker="some.unpriced")
+    )
+    exit_code, _ = refused_run(wired, tmp_path, "--config", "odd")
+    assert exit_code == 2
+    assert "RERANKER_MODEL=some.unpriced" in capsys.readouterr().err
+
+
+def test_answer_models_need_no_price_on_a_retrieval_only_run(wired, tmp_path, monkeypatch):
+    monkeypatch.setenv("LLM_MODEL", "some.unpriced-model")
+    monkeypatch.setenv("FALLBACK_LLM_MODEL", "some.unpriced-fallback")
+    items = [golden("q001")]
+    wired(items, FakeRetriever({items[0].question: ON_PAGE_23}))
+
+    assert main(["--config", "sections", "--retrieval-only", "--results-dir", str(tmp_path)]) == 0
+
+
+def test_an_empty_fallback_model_needs_no_price(wired, tmp_path, monkeypatch):
+    monkeypatch.setenv("FALLBACK_LLM_MODEL", "")
+
+    exit_code, _ = refused_run(wired, tmp_path, "--config", "sections")
+
+    assert exit_code == 0
+
+
+def test_the_agent_turn_limit_is_recorded_for_tool_configurations_only(wired, tmp_path):
+    items = [golden("q001")]
+    wired(items, FakeRetriever({items[0].question: ON_PAGE_23}), answer_fn=lambda q, c: answered(q))
+
+    main(["--config", "agent", "--results-dir", str(tmp_path)])
+    main(["--config", "sections", "--results-dir", str(tmp_path)])
+
+    configs = {
+        path.name.split("_", 1)[1]: json.loads(path.read_text(encoding="utf-8"))["config"]
+        for path in tmp_path.glob("*.json")
+    }
+    assert configs["agent.json"]["agent_max_tool_turns"] == 4
+    assert configs["sections.json"]["agent_max_tool_turns"] is None

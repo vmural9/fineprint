@@ -70,6 +70,7 @@ class RunConfig:
     fallback_model: str | None = None  # the model answers fell back to; None: there was none
     tracing: str | None = None  # the tracing provider the run used; None on an older file
     langfuse_base_url: str | None = None  # where the traces went, when they went to Langfuse
+    agent_max_tool_turns: int | None = None  # the agent's tool-turn limit; None: no tools
     only: list[str] | None = None  # the question ids of a partial run; None: the whole golden set
 
 
