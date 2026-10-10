@@ -16,8 +16,16 @@ import threading
 from typing import Any
 
 import boto3
+from botocore.config import Config
 
 from fineprint.providers.base import RerankResult
+from fineprint.providers.bedrock_errors import BOTO_ERRORS, map_boto_error
+
+# Seconds one request may wait for the reply, and botocore's attempts per call (the first try
+# included). The connect timeout is fixed at 5 seconds. Settings carry the real values.
+DEFAULT_TIMEOUT = 10.0
+DEFAULT_MAX_ATTEMPTS = 4
+CONNECT_TIMEOUT = 5
 
 
 class RerankResponseError(RuntimeError):
@@ -27,7 +35,15 @@ class RerankResponseError(RuntimeError):
 class BedrockReranker:
     """Re-ranks passages with `cohere.rerank-v3-5:0` through `bedrock-agent-runtime`."""
 
-    def __init__(self, model: str, region: str, *, client: Any | None = None):
+    def __init__(
+        self,
+        model: str,
+        region: str,
+        *,
+        client: Any | None = None,
+        timeout: float = DEFAULT_TIMEOUT,
+        max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+    ):
         """Take the model and region from settings; take a client only in tests.
 
         `client` is the seam the unit tests use: pass a stub and nothing touches the network.
@@ -36,6 +52,8 @@ class BedrockReranker:
         self.region = region
         # Foundation models belong to no account, so the account field of the ARN stays empty.
         self.model_arn = f"arn:aws:bedrock:{region}::foundation-model/{model}"
+        self.timeout = timeout
+        self.max_attempts = max_attempts
         self._client = client
         self._client_lock = threading.Lock()
 
@@ -49,7 +67,15 @@ class BedrockReranker:
         """
         with self._client_lock:
             if self._client is None:
-                self._client = boto3.client("bedrock-agent-runtime", region_name=self.region)
+                self._client = boto3.client(
+                    "bedrock-agent-runtime",
+                    region_name=self.region,
+                    config=Config(
+                        connect_timeout=CONNECT_TIMEOUT,
+                        read_timeout=self.timeout,
+                        retries={"max_attempts": self.max_attempts, "mode": "standard"},
+                    ),
+                )
             return self._client
 
     def rerank(self, query: str, documents: list[str], top_n: int) -> list[RerankResult]:
@@ -59,25 +85,31 @@ class BedrockReranker:
             # would be an empty list anyway.
             return []
 
-        response = self.client.rerank(
-            queries=[{"type": "TEXT", "textQuery": {"text": query}}],
-            sources=[
-                {
-                    "type": "INLINE",
-                    "inlineDocumentSource": {"type": "TEXT", "textDocument": {"text": document}},
-                }
-                for document in documents
-            ],
-            rerankingConfiguration={
-                "type": "BEDROCK_RERANKING_MODEL",
-                "bedrockRerankingConfiguration": {
-                    "modelConfiguration": {"modelArn": self.model_arn},
-                    # Asking for more results than there are passages fails the whole call:
-                    # "Cannot provide numberOfResults value that exceeds the number of sources."
-                    "numberOfResults": min(top_n, len(documents)),
+        try:
+            response = self.client.rerank(
+                queries=[{"type": "TEXT", "textQuery": {"text": query}}],
+                sources=[
+                    {
+                        "type": "INLINE",
+                        "inlineDocumentSource": {
+                            "type": "TEXT",
+                            "textDocument": {"text": document},
+                        },
+                    }
+                    for document in documents
+                ],
+                rerankingConfiguration={
+                    "type": "BEDROCK_RERANKING_MODEL",
+                    "bedrockRerankingConfiguration": {
+                        "modelConfiguration": {"modelArn": self.model_arn},
+                        # Asking for more results than there are passages fails the whole call:
+                        # "Cannot provide numberOfResults value that exceeds the number of sources."
+                        "numberOfResults": min(top_n, len(documents)),
+                    },
                 },
-            },
-        )
+            )
+        except BOTO_ERRORS as error:
+            raise map_boto_error(error, self.model) from error
         results = self._read_results(response, len(documents))
 
         # Bedrock already sends its results best first and no more than were asked for. Sorting

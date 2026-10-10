@@ -11,8 +11,15 @@ import time
 
 import boto3
 import pytest
+from botocore.exceptions import ClientError, ReadTimeoutError
 from botocore.stub import Stubber
 
+from fineprint.providers.base import (
+    EmbeddingResult,
+    ProviderRequestError,
+    ProviderTimeoutError,
+    ProviderUnavailableError,
+)
 from fineprint.providers.bedrock_embedder import BedrockEmbedder, EmbeddingResponseError
 
 MODEL = "amazon.titan-embed-text-v2:0"
@@ -137,3 +144,118 @@ def test_the_request_is_valid_for_the_real_bedrock_runtime_api():
 
         assert len(embedder.embed_query("hello")) == 1024
         stubber.assert_no_pending_responses()
+
+
+def test_embed_sums_titans_token_count_over_the_texts_and_times_the_call():
+    client = FakeBedrockRuntime()  # every call reports inputTextTokenCount 7
+    embedder = BedrockEmbedder(model=MODEL, region="us-west-2", client=client)
+
+    result = embedder.embed(["a", "bb", "ccc"])
+
+    assert isinstance(result, EmbeddingResult)
+    assert result.input_tokens == 21
+    assert [vector[0] for vector in result.vectors] == [1.0, 2.0, 3.0]
+    assert result.latency_ms > 0
+
+
+def test_embed_reports_no_token_count_when_titan_sends_none():
+    client = FakeBedrockRuntime(payload={"embedding": [0.1] * 1024})
+    embedder = BedrockEmbedder(model=MODEL, region="us-west-2", client=client)
+
+    assert embedder.embed(["a"]).input_tokens is None
+
+
+def test_embed_with_no_texts_makes_no_calls_and_reports_zero_tokens():
+    client = FakeBedrockRuntime()
+    embedder = BedrockEmbedder(model=MODEL, region="us-west-2", client=client)
+
+    result = embedder.embed([])
+
+    assert (result.vectors, result.input_tokens, client.calls) == ([], 0, [])
+
+
+def test_embed_query_and_embed_documents_are_the_vectors_of_embed():
+    embedder = BedrockEmbedder(model=MODEL, region="us-west-2", client=FakeBedrockRuntime())
+
+    assert embedder.embed_query("bb") == embedder.embed(["bb"]).vectors[0]
+    assert embedder.embed_documents(["a", "bb"]) == embedder.embed(["a", "bb"]).vectors
+
+
+class RaisingBedrockRuntime:
+    def __init__(self, error: Exception):
+        self.error = error
+
+    def invoke_model(self, **kwargs: object) -> dict:
+        raise self.error
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (ReadTimeoutError(endpoint_url="https://bedrock.test"), ProviderTimeoutError),
+        (
+            ClientError({"Error": {"Code": "ThrottlingException", "Message": "slow"}}, "Invoke"),
+            ProviderUnavailableError,
+        ),
+        (
+            ClientError({"Error": {"Code": "ValidationException", "Message": "bad"}}, "Invoke"),
+            ProviderRequestError,
+        ),
+    ],
+    ids=["timeout", "throttled", "rejected"],
+)
+@pytest.mark.parametrize("many", [False, True], ids=["one text", "many texts, in the pool"])
+def test_a_boto3_failure_becomes_a_provider_error_naming_the_model(error, expected, many):
+    embedder = BedrockEmbedder(model=MODEL, region="us-west-2", client=RaisingBedrockRuntime(error))
+
+    with pytest.raises(expected) as raised:
+        embedder.embed(["a", "bb"] if many else ["a"])
+
+    assert type(raised.value) is expected
+    assert MODEL in str(raised.value)
+    assert raised.value.__cause__ is error
+
+
+def test_a_failure_the_service_cannot_act_on_is_not_wrapped():
+    error = ValueError("a bug, not an outage")
+    embedder = BedrockEmbedder(model=MODEL, region="us-west-2", client=RaisingBedrockRuntime(error))
+
+    with pytest.raises(ValueError):
+        embedder.embed_query("a")
+
+
+class RecordingBoto3:
+    """Stands in for `boto3.client`, keeping what the embedder asked for."""
+
+    def __init__(self):
+        self.calls: list[tuple[tuple, dict]] = []
+
+    def __call__(self, *args: object, **kwargs: object) -> object:
+        self.calls.append((args, kwargs))
+        return FakeBedrockRuntime()
+
+
+def test_the_boto3_client_gets_the_timeouts_and_the_standard_retry_mode(monkeypatch):
+    recorder = RecordingBoto3()
+    monkeypatch.setattr("fineprint.providers.bedrock_embedder.boto3.client", recorder)
+    embedder = BedrockEmbedder(model=MODEL, region="us-east-1", timeout=7.5, max_attempts=3)
+
+    embedder.embed_query("hello")
+
+    ((args, kwargs),) = recorder.calls
+    assert args == ("bedrock-runtime",)
+    assert kwargs["region_name"] == "us-east-1"
+    config = kwargs["config"]
+    assert config.connect_timeout == 5
+    assert config.read_timeout == 7.5
+    assert config.retries == {"max_attempts": 3, "mode": "standard"}
+
+
+def test_the_defaults_are_ten_seconds_and_four_attempts(monkeypatch):
+    recorder = RecordingBoto3()
+    monkeypatch.setattr("fineprint.providers.bedrock_embedder.boto3.client", recorder)
+
+    BedrockEmbedder(model=MODEL, region="us-west-2").embed_query("hello")
+
+    config = recorder.calls[0][1]["config"]
+    assert (config.read_timeout, config.retries["max_attempts"]) == (10, 4)
