@@ -9,6 +9,8 @@ of the real models:
 - `FakeChatModel` hands back one canned object, whatever it is asked.
 - `ScriptedChatModel` hands back canned objects in order, from a separate queue for each schema,
   for code that asks a model several different things, or asks the same thing twice.
+- `ScriptedToolModel` hands back canned tool turns in order, recording every conversation it
+  was shown, for the agent's loop.
 - `FakeReranker` puts passages in order of how many of the query's words each one contains.
 - `FlakyChatModel` follows a script with one entry per call, each either an exception to raise
   or a response to return, for code that has to cope with a model that fails and then recovers.
@@ -19,6 +21,7 @@ Import them as
 `from tests.fakes import FakeChatModel, FakeEmbedder, FakeReranker, ScriptedChatModel`.
 """
 
+import copy
 import hashlib
 import math
 import random
@@ -30,7 +33,14 @@ from typing import Any, NamedTuple
 
 from pydantic import BaseModel
 
-from fineprint.providers.base import EmbeddingResult, LLMResult, RerankResult, ToolTurn
+from fineprint.providers.base import (
+    EmbeddingResult,
+    LLMResult,
+    RerankResult,
+    ToolCall,
+    ToolSpec,
+    ToolTurn,
+)
 
 
 class FakeEmbedder:
@@ -204,6 +214,70 @@ class FlakyChatModel:
         if not isinstance(entry, ToolTurn):
             raise TypeError(f"the script holds a {type(entry).__name__} for a tool call")
         return entry
+
+
+class ToolTurnCall(NamedTuple):
+    """One call made to `ScriptedToolModel`: what the model was shown and what it was told to do.
+
+    `messages` is a copy taken at the time of the call, so a test sees the conversation as it
+    stood then, not as the loop went on to extend it.
+    """
+
+    system: str
+    messages: list[dict[str, Any]]
+    tools: list[ToolSpec]
+    force_tool: str | None
+
+
+class ScriptedToolModel:
+    """A tool-calling model that hands back canned turns in order.
+
+    Each entry of the script is a list of `ToolCall`s, the calls the model "makes" that turn,
+    or a whole `ToolTurn` when a test needs its own token counts or model. A list becomes a
+    turn with `input_tokens` and `output_tokens`, and content blocks shaped the way the
+    Messages API returns them. A call with nothing left in the script fails the test.
+    """
+
+    model = "scripted-tool-model"
+
+    def __init__(
+        self,
+        script: Sequence[list[ToolCall] | ToolTurn],
+        *,
+        input_tokens: int = 900,
+        output_tokens: int = 120,
+    ):
+        self.script = list(script)
+        self.input_tokens = input_tokens
+        self.output_tokens = output_tokens
+        self.calls: list[ToolTurnCall] = []
+
+    def complete_with_tools(
+        self,
+        system: str,
+        messages: list[dict[str, Any]],
+        tools: Sequence[ToolSpec],
+        *,
+        force_tool: str | None = None,
+    ) -> ToolTurn:
+        self.calls.append(ToolTurnCall(system, copy.deepcopy(messages), list(tools), force_tool))
+        if not self.script:
+            raise AssertionError("ScriptedToolModel was asked for a turn with its script used up")
+        entry = self.script.pop(0)
+        if isinstance(entry, ToolTurn):
+            return entry
+        return ToolTurn(
+            tool_calls=list(entry),
+            content=[
+                {"type": "tool_use", "id": call.id, "name": call.name, "input": call.arguments}
+                for call in entry
+            ],
+            model=self.model,
+            input_tokens=self.input_tokens,
+            output_tokens=self.output_tokens,
+            latency_ms=12.5,
+            stop_reason="tool_use",
+        )
 
 
 def _words(text: str) -> set[str]:
