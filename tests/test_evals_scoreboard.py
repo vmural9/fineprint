@@ -393,10 +393,29 @@ def test_the_tool_calls_table_counts_questions_calls_and_refused_calls_per_tool(
     document = render(fixture_results, STAMP, golden=GOLDEN)
 
     section = document.split("### Tool calls")[1].split("### What produced each row")[0]
-    assert "| Configuration | Tool | Questions that called it | Calls | Errors |" in section
-    assert "| agent | check_enrollment_window | 1 | 1 | 1 |" in section
-    assert "| agent | lookup_cost_figure | 3 | 4 | 0 |" in section
+    assert (
+        "| Configuration | Tool | Questions that called it | Which questions | Calls | Errors |"
+        in section
+    )
+    assert "| agent | check_enrollment_window | 1 | q002 | 1 | 1 |" in section
+    assert "| agent | lookup_cost_figure | 3 | q001, q002, q005 | 4 | 0 |" in section
     assert "| hybrid |" not in section
+
+
+def test_the_tool_calls_table_lists_the_questions_that_called_neither_tool(fixture_results):
+    document = render(fixture_results, STAMP, golden=GOLDEN)
+
+    section = document.split("### Tool calls")[1].split("### What produced each row")[0]
+    assert "| agent | (neither tool) | 1 | q003 | — | — |" in section
+    assert "a question without a trace is in no line" in section
+
+
+def test_a_question_that_called_both_tools_is_listed_under_each_once(fixture_results):
+    # q002 called lookup_cost_figure and check_enrollment_window; q005 called the lookup twice.
+    document = render(fixture_results, STAMP, golden=GOLDEN)
+
+    assert "| agent | lookup_cost_figure | 3 | q001, q002, q005 |" in document
+    assert "| agent | check_enrollment_window | 1 | q002 |" in document
 
 
 def test_a_row_that_offered_the_tools_but_never_used_them_shows_zeros_not_nothing(
@@ -410,8 +429,9 @@ def test_a_row_that_offered_the_tools_but_never_used_them_shows_zeros_not_nothin
 
     document = render(fixture_results, STAMP, golden=GOLDEN)
 
-    assert "| agent | check_enrollment_window | 0 | 0 | 0 |" in document
-    assert "| agent | lookup_cost_figure | 0 | 0 | 0 |" in document
+    assert "| agent | check_enrollment_window | 0 | — | 0 | 0 |" in document
+    assert "| agent | lookup_cost_figure | 0 | — | 0 | 0 |" in document
+    assert "| agent | (neither tool) | 4 | q001, q002, q003, q005 | — | — |" in document
 
 
 def test_the_tool_calls_come_from_the_traces_so_a_failed_answer_does_not_change_them(
@@ -423,8 +443,8 @@ def test_the_tool_calls_come_from_the_traces_so_a_failed_answer_does_not_change_
 
     document = render(fixture_results, STAMP, golden=GOLDEN)
 
-    assert "| agent | lookup_cost_figure | 3 | 4 | 0 |" in document
-    assert "| agent | $0.0500 | 8.0 s | 20.0 s | 20.0 s | 2.00 | 1.25 | 1 |" in document
+    assert "| agent | lookup_cost_figure | 3 | q001, q002, q005 | 4 | 0 |" in document
+    assert "| agent | $0.0500 | 8.0 s | 20.0 s | 20.0 s | 2.00 | 1.25 | 1 | — |" in document
 
 
 def test_a_question_without_a_trace_adds_no_tool_calls(fixture_results):
@@ -432,7 +452,8 @@ def test_a_question_without_a_trace_adds_no_tool_calls(fixture_results):
 
     document = render(fixture_results, STAMP, golden=GOLDEN)
 
-    assert "| agent | lookup_cost_figure | 2 | 3 | 0 |" in document
+    assert "| agent | lookup_cost_figure | 2 | q002, q005 | 3 | 0 |" in document
+    assert "| agent | (neither tool) | 1 | q003 | — | — |" in document, "q001 is in no line"
 
 
 def test_the_tool_calls_table_is_left_out_while_no_row_offered_the_tools():

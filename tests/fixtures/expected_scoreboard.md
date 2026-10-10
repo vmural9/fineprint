@@ -99,12 +99,13 @@ Only rows with a trace stored for every question are in this table. *Retriever* 
 
 ### Tool calls
 
-| Configuration | Tool | Questions that called it | Calls | Errors |
-| --- | --- | --- | --- | --- |
-| agent | check_enrollment_window | 1 | 1 | 1 |
-| agent | lookup_cost_figure | 3 | 4 | 0 |
+| Configuration | Tool | Questions that called it | Which questions | Calls | Errors |
+| --- | --- | --- | --- | --- | --- |
+| agent | check_enrollment_window | 1 | q002 | 1 | 1 |
+| agent | lookup_cost_figure | 3 | q001, q002, q005 | 4 | 0 |
+| agent | (neither tool) | 1 | q003 | — | — |
 
-Only rows that offered the model the two tools are in this table, counted from the tool calls in each question's trace. A call that errored is one the tool refused, for example for an argument it does not know.
+Only rows that offered the model the two tools are in this table, counted from the tool calls in each question's trace. A call that errored is one the tool refused, for example for an argument it does not know. The last line of a row is the questions that called neither tool; a question without a trace is in no line.
 
 ### What produced each row
 
