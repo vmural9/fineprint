@@ -248,6 +248,74 @@ def test_a_reply_with_no_tool_call_says_what_came_back_instead():
     assert "end_turn" in str(raised.value)
 
 
+# Bedrock bills the tokens of a reply that was then refused, cut off, or unusable, so each of
+# these errors says how many were used, summed over every request made so far.
+
+
+def test_a_refusal_carries_the_tokens_it_used():
+    chat, _ = chat_model(
+        message(blocks=[], stop_reason="refusal", input_tokens=700, output_tokens=15)
+    )
+
+    with pytest.raises(ModelRefusedError) as raised:
+        chat.complete_structured("system rules", "the excerpts", DraftAnswer)
+
+    assert (raised.value.input_tokens, raised.value.output_tokens) == (700, 15)
+
+
+def test_a_truncated_answer_carries_the_tokens_it_used():
+    chat, _ = chat_model(
+        message(
+            blocks=[tool_call(VALID_INPUT)],
+            stop_reason="max_tokens",
+            input_tokens=900,
+            output_tokens=4096,
+        )
+    )
+
+    with pytest.raises(ResponseTruncatedError) as raised:
+        chat.complete_structured("system rules", "the excerpts", DraftAnswer)
+
+    assert (raised.value.input_tokens, raised.value.output_tokens) == (900, 4096)
+
+
+def test_a_reply_with_no_tool_call_carries_the_tokens_it_used():
+    chat, _ = chat_model(
+        message(
+            blocks=[TextBlock(text="Just chatting.", type="text")],
+            stop_reason="end_turn",
+            input_tokens=650,
+            output_tokens=9,
+        )
+    )
+
+    with pytest.raises(NoToolCallError) as raised:
+        chat.complete_structured("system rules", "the excerpts", DraftAnswer)
+
+    assert (raised.value.input_tokens, raised.value.output_tokens) == (650, 9)
+
+
+def test_a_tool_call_invalid_twice_carries_the_tokens_of_both_requests():
+    chat, _ = chat_model(
+        message(blocks=[tool_call(INVALID_INPUT)], input_tokens=800, output_tokens=100),
+        message(
+            blocks=[tool_call(INVALID_INPUT, block_id="toolu_2")],
+            input_tokens=1000,
+            output_tokens=120,
+        ),
+    )
+
+    with pytest.raises(InvalidToolInputError) as raised:
+        chat.complete_structured("system rules", "the excerpts", DraftAnswer)
+
+    assert (raised.value.input_tokens, raised.value.output_tokens) == (1800, 220)
+
+
+def test_a_chat_error_that_was_raised_without_usage_has_none():
+    assert ModelRefusedError("no reply").input_tokens is None
+    assert ModelRefusedError("no reply").output_tokens is None
+
+
 REQUEST = httpx.Request("POST", "https://bedrock-runtime.us-west-2.amazonaws.com/v1/messages")
 
 

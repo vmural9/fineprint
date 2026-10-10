@@ -19,8 +19,9 @@ list prices in `pricing.py`. A call whose price is not known has no cost, and a 
 one has no cost either: an unknown amount is never added up as zero.
 """
 
+import logging
 import time
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -43,12 +44,15 @@ from fineprint.providers.base import (
     Embedder,
     EmbeddingResult,
     LLMResult,
+    ProviderError,
     Reranker,
     RerankResult,
     ToolCallingModel,
     ToolSpec,
     ToolTurn,
 )
+
+logger = logging.getLogger(__name__)
 
 Kind = Literal["retriever", "embedding", "rerank", "generation", "tool", "agent"]
 
@@ -157,11 +161,12 @@ def now_ms(since: float) -> float:
 def total_cost(calls: Sequence[CallRecord]) -> float | None:
     """The cost of a set of calls: None when a call that should have a price has none.
 
-    A call that failed is left out of that check. It has no token counts, so it has no cost,
-    and holding that against the trace would make every trace with a fallback in it unknown.
+    A call that failed has a cost when the failure said how many tokens it used, and counts as
+    zero when it was a provider failure (see `Span.end`). Any other failure leaves no cost, so
+    the total is unknown rather than too low.
     """
     for call in calls:
-        if call.kind in PRICED_KINDS and call.cost_usd is None and call.error is None:
+        if call.kind in PRICED_KINDS and call.cost_usd is None:
             return None
     return sum((call.cost_usd for call in calls if call.cost_usd is not None), 0.0)
 
@@ -203,6 +208,11 @@ class Span:
         self.ended = True
         model = model if model is not None else self._model
         message = describe_error(error) if error is not None else None
+        cost_usd = cost.total_usd if cost is not None else None
+        if cost_usd is None and isinstance(error, ProviderError) and self._kind in PRICED_KINDS:
+            # The provider never produced a reply (a timeout, throttling, an outage), so nothing
+            # knowable was billed: the call counts as costing nothing, not as unknown.
+            cost_usd = 0.0
         self._observation.update(
             output=output,
             model=model,
@@ -222,7 +232,7 @@ class Span:
                 output_tokens=output_tokens,
                 units=units,
                 latency_ms=now_ms(self._started),
-                cost_usd=cost.total_usd if cost is not None else None,
+                cost_usd=cost_usd,
                 error=message,
                 fallback=fallback,
             )
@@ -269,11 +279,116 @@ class Trace:
 _ACTIVE: ContextVar[Trace | None] = ContextVar("fineprint_active_trace", default=None)
 
 
+class _GuardedSink:
+    """A sink that cannot raise: a failure inside it is logged and swallowed.
+
+    A trace is a side effect of answering a question, and a tracing service that is down, slow
+    or wrong must never turn into a failed request. Each distinct failure (the call, and the kind
+    of error) is logged once, with its traceback, and silent after that; the tracer's own
+    `TraceRecord` carries on regardless.
+    """
+
+    def __init__(self, sink: Sink) -> None:
+        self._sink = sink
+        self._reported: set[tuple[str, type[BaseException]]] = set()
+
+    def _swallow(self, doing: str, error: Exception) -> None:
+        key = (doing, type(error))
+        if key not in self._reported:
+            self._reported.add(key)
+            logger.warning(
+                "tracing sink failed while %s: %s. Further failures like this are not logged.",
+                doing,
+                describe_error(error),
+                exc_info=error,
+            )
+
+    @contextmanager
+    def _guard(
+        self, doing: str, open_it: Callable[[], AbstractContextManager[Observation]]
+    ) -> Iterator[Observation]:
+        try:
+            opened = open_it()
+            observation = opened.__enter__()
+        except Exception as error:
+            self._swallow(f"opening {doing}", error)
+            yield _NoObservation()
+            return
+        try:
+            yield _GuardedObservation(observation, self)
+        except BaseException as body_error:
+            try:
+                opened.__exit__(type(body_error), body_error, body_error.__traceback__)
+            except BaseException as exit_error:
+                # Throwing the body's own exception into the sink's context manager makes it
+                # come straight back out; that is not a sink failure.
+                if exit_error is not body_error:
+                    self._swallow(f"closing {doing}", exit_error)  # type: ignore[arg-type]
+            raise
+        else:
+            try:
+                opened.__exit__(None, None, None)
+            except Exception as error:
+                self._swallow(f"closing {doing}", error)
+
+    def trace(self, name: str, **attributes: Any) -> AbstractContextManager[Observation]:
+        return self._guard(f"trace {name!r}", lambda: self._sink.trace(name, **attributes))
+
+    def observation(
+        self, kind: Kind, name: str, **attributes: Any
+    ) -> AbstractContextManager[Observation]:
+        return self._guard(
+            f"{kind} span {name!r}", lambda: self._sink.observation(kind, name, **attributes)
+        )
+
+    def current_trace_id(self) -> str | None:
+        try:
+            return self._sink.current_trace_id()
+        except Exception as error:
+            self._swallow("reading the trace id", error)
+            return None
+
+    def trace_url(self, trace_id: str) -> str | None:
+        try:
+            return self._sink.trace_url(trace_id)
+        except Exception as error:
+            self._swallow("looking up the trace url", error)
+            return None
+
+    def flush(self) -> None:
+        try:
+            self._sink.flush()
+        except Exception as error:
+            self._swallow("flushing", error)
+
+    def shutdown(self) -> None:
+        try:
+            self._sink.shutdown()
+        except Exception as error:
+            self._swallow("shutting down", error)
+
+
+class _GuardedObservation:
+    """An observation whose `update` cannot raise."""
+
+    def __init__(self, observation: Observation, guard: _GuardedSink) -> None:
+        self._observation = observation
+        self._guard = guard
+
+    def update(self, **fields: Any) -> None:
+        try:
+            self._observation.update(**fields)
+        except Exception as error:
+            self._guard._swallow("updating an observation", error)
+
+
 class Tracer:
     """Opens traces and spans, keeps their records, and forwards them to a sink if there is one."""
 
     def __init__(self, sink: Sink | None = None) -> None:
         self.sink = sink
+        # Tracing is a side effect: every call into the sink goes through this guard.
+        self._guarded = _GuardedSink(sink) if sink is not None else None
 
     def active_trace(self) -> Trace | None:
         """The trace this tracer has open right now, or None."""
@@ -305,17 +420,17 @@ class Tracer:
         # Short strings only: Langfuse coerces metadata values to strings and drops long ones.
         sink_metadata = {key: str(value) for key, value in (metadata or {}).items()}
         opened: AbstractContextManager[Observation] = (
-            self.sink.trace(
+            self._guarded.trace(
                 name, input=input, session_id=session_id, tags=tags, metadata=sink_metadata
             )
-            if self.sink is not None
+            if self._guarded is not None
             else nullcontext(_NoObservation())
         )
         with opened as root:
             trace = Trace(
                 name,
                 root,
-                self.sink.current_trace_id() if self.sink is not None else None,
+                self._guarded.current_trace_id() if self._guarded is not None else None,
                 self,
             )
             token = _ACTIVE.set(trace)
@@ -340,8 +455,8 @@ class Tracer:
             return
 
         opened: AbstractContextManager[Observation] = (
-            self.sink.observation(kind, name, input=input, model=model)
-            if self.sink is not None
+            self._guarded.observation(kind, name, input=input, model=model)
+            if self._guarded is not None
             else nullcontext(_NoObservation())
         )
         with opened as observation:
@@ -356,17 +471,17 @@ class Tracer:
 
     def trace_url(self, trace_id: str) -> str | None:
         """A link to the trace in the sink's UI, or None without a sink."""
-        return self.sink.trace_url(trace_id) if self.sink is not None else None
+        return self._guarded.trace_url(trace_id) if self._guarded is not None else None
 
     def flush(self) -> None:
         """Send whatever the sink is holding. A service calls this when it is about to idle."""
-        if self.sink is not None:
-            self.sink.flush()
+        if self._guarded is not None:
+            self._guarded.flush()
 
     def shutdown(self) -> None:
         """Flush and stop the sink's background work. A process calls this before it exits."""
-        if self.sink is not None:
-            self.sink.shutdown()
+        if self._guarded is not None:
+            self._guarded.shutdown()
 
 
 def _price_or_none(compute: Any, *args: Any, prices: Mapping[str, Price]) -> Cost | None:
@@ -409,7 +524,11 @@ class TracedChatModel:
     ) -> LLMResult[T]:
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         with self._tracer.span("generation", self._name, input=messages, model=self.model) as span:
-            result = self._inner.complete_structured(system, user, schema)
+            try:
+                result = self._inner.complete_structured(system, user, schema)
+            except Exception as error:
+                self._end_failed(span, error)
+                raise
             span.end(
                 output=_jsonable(result.parsed),
                 model=result.model,
@@ -439,7 +558,11 @@ class TracedChatModel:
         )  # an inner model without it fails here, as it would bare
         shown = [{"role": "system", "content": system}, *messages]
         with self._tracer.span("generation", self._name, input=shown, model=self.model) as span:
-            turn = call(system, messages, tools, force_tool=force_tool)
+            try:
+                turn = call(system, messages, tools, force_tool=force_tool)
+            except Exception as error:
+                self._end_failed(span, error)
+                raise
             span.end(
                 output=[
                     {"name": made.name, "arguments": made.arguments} for made in turn.tool_calls
@@ -456,6 +579,22 @@ class TracedChatModel:
                 ),
             )
             return turn
+
+    def _end_failed(self, span: Span, error: Exception) -> None:
+        """End a span whose call raised, pricing what the failure says was billed.
+
+        Bedrock bills a reply it then refuses, cuts off or cannot use, and the errors for those
+        carry the tokens used (`input_tokens`, `output_tokens`). Without them the call has no
+        cost, and the trace's cost is unknown rather than left too low.
+        """
+        input_tokens = getattr(error, "input_tokens", None)
+        output_tokens = getattr(error, "output_tokens", None)
+        cost = None
+        if input_tokens is not None and output_tokens is not None and self.model is not None:
+            cost = _price_or_none(
+                generation_cost, self.model, input_tokens, output_tokens, prices=self._prices
+            )
+        span.end(error=error, input_tokens=input_tokens, output_tokens=output_tokens, cost=cost)
 
 
 class TracedEmbedder:
