@@ -124,6 +124,7 @@ class Aggregates:
     generations_per_query: float | None = None
     tool_calls_per_query: float | None = None
     fallbacks: int | None = None
+    reranks_skipped: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,6 +138,7 @@ class Serving:
     generations_per_query: float
     tool_calls_per_query: float
     fallbacks: int
+    reranks_skipped: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -359,7 +361,13 @@ def _serving(rows: Sequence[QuestionScore]) -> Serving | None:
             any(call.kind == "generation" and call.fallback for call in trace.calls)
             for trace in complete
         ),
+        reranks_skipped=sum(skipped_rerank(trace) for trace in complete),
     )
+
+
+def skipped_rerank(trace: TraceRecord) -> bool:
+    """True when a question's re-rank call failed, so its chunks stayed in the fused order."""
+    return any(call.kind == "rerank" and call.error is not None for call in trace.calls)
 
 
 def _calls(traces: Sequence[TraceRecord], kind: str) -> int:
@@ -396,4 +404,5 @@ def aggregate(scores: Iterable[QuestionScore]) -> Aggregates:
         generations_per_query=serving.generations_per_query if serving else None,
         tool_calls_per_query=serving.tool_calls_per_query if serving else None,
         fallbacks=serving.fallbacks if serving else None,
+        reranks_skipped=serving.reranks_skipped if serving else None,
     )

@@ -350,9 +350,9 @@ def test_the_cost_and_latency_table_lists_the_traced_row_only(fixture_results):
     section = document.split("### Cost and latency")[1].split("### Tool calls")[0]
     assert (
         "| Configuration | Mean cost | p50 latency | p95 latency | Max latency | "
-        "Generations per query | Tool calls per query | Fallbacks |"
+        "Generations per query | Tool calls per query | Fallbacks | Re-ranks skipped |"
     ) in section
-    assert "| agent | $0.0500 | 8.0 s | 20.0 s | 20.0 s | 2.00 | 1.25 | 1 |" in section
+    assert "| agent | $0.0500 | 8.0 s | 20.0 s | 20.0 s | 2.00 | 1.25 | 1 | — |" in section
     assert "| hybrid |" not in section
     assert "lexical-only" not in section
 
@@ -655,3 +655,61 @@ def test_a_directory_holding_only_partial_runs_has_no_rows(tmp_path):
     save(replace(full, config=replace(full.config, only=["q001"])), tmp_path / "partial.json")
 
     assert latest_per_config(tmp_path) == {}
+
+
+def rerank_call(error: str | None):
+    from fineprint.tracing import CallRecord
+
+    return CallRecord(
+        kind="rerank",
+        name="rerank",
+        model="cohere.rerank-v3-5:0",
+        input_tokens=None,
+        output_tokens=None,
+        units=1,
+        latency_ms=100.0,
+        cost_usd=0.002,
+        error=error,
+    )
+
+
+def with_reranker(result, failures: tuple[bool, ...]):
+    """The agent fixture as a re-ranking row whose questions' re-ranks failed as `failures` says."""
+    questions = [
+        replace(
+            question,
+            trace=replace(
+                question.trace,
+                calls=[*question.trace.calls, rerank_call("throttled" if failed else None)],
+            ),
+        )
+        for question, failed in zip(result.questions, failures, strict=True)
+    ]
+    return replace(
+        result, config=replace(result.config, reranker="cohere.rerank-v3-5:0"), questions=questions
+    )
+
+
+def test_the_re_ranks_skipped_column_counts_questions_whose_rerank_failed(fixture_results):
+    fixture_results["agent"] = with_reranker(fixture_results["agent"], (True, False, True, False))
+
+    section = render(fixture_results, STAMP, golden=GOLDEN).split("### Cost and latency")[1]
+
+    assert "| agent | $0.0500 | 8.0 s | 20.0 s | 20.0 s | 2.00 | 1.25 | 1 | 2 |" in section
+
+
+def test_a_re_ranking_row_that_skipped_nothing_shows_zero_not_a_dash(fixture_results):
+    fixture_results["agent"] = with_reranker(fixture_results["agent"], (False,) * 4)
+
+    section = render(fixture_results, STAMP, golden=GOLDEN).split("### Cost and latency")[1]
+
+    assert "| 1 | 0 |" in section
+
+
+def test_the_re_ranks_skipped_column_is_a_dash_when_a_question_has_no_trace(fixture_results):
+    fixture_results["agent"] = with_reranker(fixture_results["agent"], (True,) * 4)
+    fixture_results["agent"].questions[2].trace = None
+
+    section = render(fixture_results, STAMP, golden=GOLDEN).split("### Cost and latency")[1]
+
+    assert "| agent | — | — | — | — | — | — | — | — |" in section
