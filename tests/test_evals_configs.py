@@ -16,10 +16,11 @@ EXPECTED = {
     "hybrid+rerank": ("fixed-220w", "hybrid", RERANKER_MODEL),
     "sections": ("sections", "hybrid", None),
     "sections+rerank": ("sections", "hybrid", RERANKER_MODEL),
+    "agent": ("sections", "hybrid", RERANKER_MODEL),
 }
 
 
-def test_the_registry_has_exactly_the_six_scoreboard_configurations():
+def test_the_registry_has_exactly_the_seven_scoreboard_configurations():
     assert set(CONFIGS) == set(EXPECTED)
 
 
@@ -116,3 +117,23 @@ def test_settings_for_does_not_mutate_the_base_settings_object():
 
     assert base.chunk_set == "fixed-220w"
     assert base.reranker_provider == "none"
+
+
+def test_only_the_agent_configuration_has_tools():
+    assert CONFIGS["agent"] == EvalConfig(
+        name="agent",
+        chunk_set="sections",
+        mode="hybrid",
+        reranker=RERANKER_MODEL,
+        tools=True,
+    )
+    assert [name for name, config in CONFIGS.items() if config.tools] == ["agent"]
+    assert EvalConfig(name="x", chunk_set="sections", mode="hybrid", reranker=None).tools is False
+
+
+def test_the_agent_configuration_turns_the_reranker_on_over_the_sections_chunk_set():
+    settings = settings_for(CONFIGS["agent"], Settings())
+
+    assert settings.chunk_set == "sections"
+    assert settings.reranker_provider == "bedrock"
+    assert settings.reranker_model == RERANKER_MODEL
