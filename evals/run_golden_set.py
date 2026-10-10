@@ -351,14 +351,30 @@ def build_answer_function(
 
     `retriever` is threaded through only because `answer_question` still requires one; passing
     `chunks` means it never calls it, so the loop's own single retrieval is the only search each
-    question causes. The chat model, fallback included, is traced with `tracer`.
+    question causes. The chat model, fallback included, is traced with `tracer`. With `tools` the
+    answer comes from the agent, which may call the two tools first and treats `today` as the
+    date when the model gives none.
     """
     from fineprint.answer import answer_question
     from fineprint.providers.factory import get_chat_model
 
-    if tools:
-        raise RunError("the tools branch waits for src/fineprint/agent.py")
     chat = get_chat_model(settings, tracer)
+
+    if tools:
+        from fineprint.agent import answer_with_tools
+
+        def answer_with_the_tools(question: str, chunks: Sequence[Any]) -> Any:
+            return answer_with_tools(
+                question,
+                retriever,
+                chat,
+                chunks=chunks,
+                today=today,
+                max_tool_turns=settings.agent_max_tool_turns,
+                tracer=tracer,
+            )
+
+        return answer_with_the_tools
 
     def answer(question: str, chunks: Sequence[Any]) -> Any:
         return answer_question(question, retriever, chat, chunks=chunks, tracer=tracer)
