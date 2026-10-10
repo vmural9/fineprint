@@ -20,10 +20,10 @@ from fineprint.answer import DraftAnswer
 from fineprint.api import app, get_chat, get_pool, get_retriever, get_settings, get_tracer
 from fineprint.config import Settings
 from fineprint.pricing import Price
-from fineprint.providers.base import LLMResult
+from fineprint.providers.base import LLMResult, ProviderUnavailableError, ToolCall
 from fineprint.retrieval import EditionNotIngestedError, RetrievedChunk
 from fineprint.tracing import TracedChatModel, Tracer
-from tests.fakes import FakeChatModel, RecordingSink
+from tests.fakes import FakeChatModel, FlakyChatModel, RecordingSink, ScriptedToolModel
 
 # The heading the premium passage sits under on page 23 of the handbook.
 PREMIUM_SECTION = "How much does Part B coverage cost?"
@@ -347,6 +347,93 @@ def test_ask_answers_503_when_the_edition_has_not_been_ingested(client: TestClie
     response = client.post("/ask", json={"question": "How much is the Part B premium?"})
 
     assert response.status_code == 503
+
+
+# --- /agent ------------------------------------------------------------------------------
+
+AGENT_PRICES = FAKE_PRICES | {
+    "scripted-tool-model": replace(FAKE_PRICES["fake-chat-model"], model="scripted-tool-model")
+}
+PREMIUM_LOOKUP = ToolCall(
+    id="toolu_premium", name="lookup_cost_figure", arguments={"figure": "part_b_standard_premium"}
+)
+RECORD = ToolCall(id="toolu_answer", name="record_answer", arguments=DRAFT.model_dump())
+
+
+def use_tool_model(client: TestClient, script: list) -> ScriptedToolModel:
+    """Answer /agent from `script`, traced and priced like the real chat model."""
+    model = ScriptedToolModel(script)
+    override(
+        get_chat,
+        TracedChatModel(model, app.dependency_overrides[get_tracer](), prices=AGENT_PRICES),
+    )
+    return model
+
+
+def test_agent_returns_the_answer_and_every_tool_call_behind_it(
+    client: TestClient, sink: RecordingSink
+):
+    use_tool_model(client, [[PREMIUM_LOOKUP], [RECORD]])
+
+    response = client.post("/agent", json={"question": "How much is the Part B premium in 2026?"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["answer"] == DRAFT.answer
+    assert body["citations"][0]["page_start"] == 23
+    assert body["turns"] == 2
+    (call,) = body["tool_calls"]
+    assert call["name"] == "lookup_cost_figure"
+    assert call["arguments"] == {"figure": "part_b_standard_premium"}
+    assert call["output"]["amount"] == "202.90"
+    assert call["pages"] == [23]
+    assert call["error"] is None
+    assert body["trace_id"] == "trace-from-the-sink"
+    assert body["cost_usd"] == pytest.approx(2 * 0.00114)
+    (trace,) = sink.traces
+    assert (trace.name, trace.tags) == ("agent", ["api"])
+
+
+def test_agent_checks_enrollment_dates_against_the_date_it_is_given(client: TestClient):
+    enrollment = ToolCall(
+        id="toolu_enrollment",
+        name="check_enrollment_window",
+        arguments={"birth_date": "1961-05-10"},
+    )
+    use_tool_model(client, [[enrollment], [RECORD]])
+
+    body = client.post(
+        "/agent", json={"question": "When can I sign up?", "as_of": "2026-03-01"}
+    ).json()
+
+    assert body["tool_calls"][0]["output"]["as_of"] == "2026-03-01"
+
+
+def test_agent_takes_its_turn_budget_from_the_settings(client: TestClient):
+    override(get_settings, Settings(agent_max_tool_turns=1))
+    model = use_tool_model(client, [[PREMIUM_LOOKUP], [RECORD]])
+
+    client.post("/agent", json={"question": "How much is the Part B premium in 2026?"})
+
+    assert [call.force_tool for call in model.calls] == [None, "record_answer"]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [{"question": ""}, {"question": "x", "as_of": "next Tuesday"}, {"question": "x", "top_k": 0}],
+    ids=["empty", "as_of not a date", "top_k too small"],
+)
+def test_agent_refuses_a_request_it_cannot_run(client: TestClient, payload: dict):
+    assert client.post("/agent", json=payload).status_code == 422
+
+
+def test_agent_answers_503_when_the_model_provider_is_unavailable(client: TestClient):
+    override(get_chat, FlakyChatModel([ProviderUnavailableError("throttled (HTTP 429)")]))
+
+    response = client.post("/agent", json={"question": "How much is the Part B premium?"})
+
+    assert response.status_code == 503
+    assert response.json()["detail"].startswith("model provider unavailable")
 
 
 # --- /healthz ---------------------------------------------------------------------------

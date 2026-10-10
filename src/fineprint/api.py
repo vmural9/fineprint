@@ -1,10 +1,15 @@
-"""The HTTP service: three endpoints over the ingested handbook.
+"""The HTTP service: four endpoints over the ingested handbook.
 
 `POST /search` shows what retrieval finds, with no model in the way. It is the endpoint that
 makes a bad answer explainable: if `/ask` is wrong, the first question is always whether the
 right passage was even retrieved, and this is how you look.
 
 `POST /ask` is the product — a question in, a cited answer out.
+
+`POST /agent` answers the same way, but lets the model call two tools first: one returns a 2026
+dollar amount exactly as the handbook prints it, the other works out enrollment dates from the
+handbook's rules. The response lists every tool call with its result, so an answer that states
+"$434 each day" shows where the $434 came from.
 
 `GET /healthz` says whether the database is reachable and how many chunks of the configured
 edition are in it, so a deployment can tell "up" from "up but empty".
@@ -15,8 +20,9 @@ request. Building an AWS client takes long enough that doing it per request woul
 the pool exists precisely so connections are not opened per request either. Each one is
 reachable through a dependency function, which is the seam the tests replace.
 
-`/ask` and `/search` each open a trace tagged `api`, and `/ask` returns the trace's id and what
-the question cost. The tracer is flushed and shut down when the service stops.
+`/ask`, `/agent` and `/search` each open a trace tagged `api`, and `/ask` and `/agent` return
+the trace's id and what the question cost. The tracer is flushed and shut down when the service
+stops.
 
 Status codes follow the spec: 422 when the request itself is wrong, 502 when a provider
 fails, 503 when the database is unreachable, the edition has not been ingested, or a model
@@ -29,6 +35,7 @@ import logging
 from collections.abc import Iterator
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import asdict
+from datetime import date
 from typing import Annotated
 
 import psycopg
@@ -36,6 +43,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from psycopg_pool import ConnectionPool, PoolTimeout
 from pydantic import AfterValidator, BaseModel, Field
 
+from fineprint.agent import AgentResponse, answer_with_tools
 from fineprint.answer import AnswerResponse, answer_question
 from fineprint.config import Settings
 from fineprint.db import connection_pool, describe_database
@@ -119,6 +127,18 @@ class AskRequest(BaseModel):
 
     question: Question
     top_k: TopK = DEFAULT_TOP_K
+
+
+class AgentRequest(BaseModel):
+    """A question for the agent, how many passages to answer it from, and what today is.
+
+    `as_of` is the date enrollment windows are checked against when the question does not say
+    one itself; left out, it is the service's own date.
+    """
+
+    question: Question
+    top_k: TopK = DEFAULT_TOP_K
+    as_of: date | None = None
 
 
 class HealthResponse(BaseModel):
@@ -286,6 +306,39 @@ def ask(
             chat,
             top_k=request.top_k,
             mode="hybrid",
+            tracer=tracer,
+        )
+
+
+@app.post(
+    "/agent",
+    summary="Answer a Medicare question, looking up the handbook's figures and dates with tools",
+)
+def agent(
+    request: AgentRequest,
+    retriever: RetrieverDep,
+    chat: ChatDep,
+    tracer: TracerDep,
+    settings: SettingsDep,
+) -> AgentResponse:
+    """Retrieve, let the model call the handbook tools, answer, and check the citations.
+
+    `tool_calls` lists every call the model made, with its arguments and its result or error,
+    and the handbook page the result came from. `turns` counts the model's replies. Status codes
+    are those of `/ask`.
+    """
+    with (
+        provider_failures("answering with tools"),
+        tracer.trace("agent", input=request.question, tags=["api"]),
+    ):
+        return answer_with_tools(
+            request.question,
+            retriever,
+            chat,  # type: ignore[arg-type]  # the factory's chat model also calls tools
+            top_k=request.top_k,
+            mode="hybrid",
+            today=request.as_of,
+            max_tool_turns=settings.agent_max_tool_turns,
             tracer=tracer,
         )
 
