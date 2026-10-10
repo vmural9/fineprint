@@ -739,3 +739,104 @@ def test_build_judge_is_the_bedrock_chat_model_on_the_model_and_region_given():
 
     assert isinstance(judge, BedrockChatModel)
     assert (judge.model, judge.region) == ("us.anthropic.claude-sonnet-5", "us-east-1")
+
+
+# --- the agent row: tool results are passages too ----------------------------------
+
+
+def tool_call(source_text: str | None, *, error: str | None = None) -> dict:
+    """One stored tool call, with the fields scoring reads."""
+    return {
+        "name": "lookup_cost_figure",
+        "arguments": {"figure": "part_b_deductible"},
+        "output": None if error else {"figure": "part_b_deductible"},
+        "error": error,
+        "pages": [27],
+        "source_text": source_text,
+        "latency_ms": 0.1,
+    }
+
+
+def agent_row(*calls: dict) -> QuestionResult:
+    """q001, answered by the agent with the given tool calls."""
+    answered = row(Q001, [chunk(1, PREMIUM, 23), chunk(2, IRMAA, 23)], answer=PREMIUM)
+    answered.answer["tool_calls"] = list(calls)
+    return answered
+
+
+def three_passage_script() -> dict:
+    """The replies for one question whose judge reads three passages."""
+    return {
+        SentenceVerdicts: [recall(Q001, True, True, False)],
+        PassageVerdicts: [precision(True, False, True)],
+        AnswerClaims: [AnswerClaims(claims=PREMIUM_CLAIMS)],
+        ClaimVerdicts: [checked(True, False)],
+        GeneratedQuestions: [GeneratedQuestions(questions=[Q001.question] * 3, noncommittal=False)],
+    }
+
+
+def test_tool_results_are_appended_to_the_passages_every_judge_reads(wired, tmp_path):
+    path = results_file(
+        tmp_path,
+        agent_row(
+            tool_call(DEDUCTIBLE),
+            tool_call(SNF_DAYS, error="unknown figure"),  # failed: the model never saw it
+            tool_call(None),  # nothing quoted: nothing to add
+        ),
+    )
+    scripted = judge(three_passage_script())
+    wired(scripted)
+
+    assert main([str(path)]) == 0
+
+    passages = numbered_passages([PREMIUM, IRMAA, DEDUCTIBLE])
+    recall_request, precision_request, claims_check = (
+        next(call.user for call in scripted.calls if call.schema is schema)
+        for schema in (SentenceVerdicts, PassageVerdicts, ClaimVerdicts)
+    )
+    assert passages in recall_request
+    assert passages in precision_request
+    assert passages in claims_check
+    (scored,) = load(path).questions
+    assert scored.scoring_detail["tool_contexts"] == 1
+    assert len(scored.scoring_detail["context_precision"]["passages"]) == 3
+    assert scored.metrics.context_precision == pytest.approx((1 + 2 / 3) / 2)
+
+
+def test_an_agent_row_that_called_no_tool_records_zero_tool_contexts(wired, tmp_path):
+    path = results_file(tmp_path, agent_row())
+    wired(judge(first_question_only(full_script())))
+
+    main([str(path)])
+
+    (scored,) = load(path).questions
+    assert scored.scoring_detail["tool_contexts"] == 0
+
+
+def test_a_row_without_tool_calls_is_scored_and_recorded_as_before(wired, tmp_path):
+    path = results_file(tmp_path, row(Q001, [chunk(1, PREMIUM, 23)], answer=PREMIUM))
+    scripted = judge(
+        {
+            **first_question_only(full_script()),
+            PassageVerdicts: [precision(True)],
+        }
+    )
+    wired(scripted)
+
+    main([str(path)])
+
+    (scored,) = load(path).questions
+    assert "tool_contexts" not in scored.scoring_detail
+    assert numbered_passages([PREMIUM]) in scripted.calls[0].user
+
+
+def test_explain_shows_a_tool_result_among_the_passages(wired, tmp_path, capsys):
+    path = results_file(tmp_path, agent_row(tool_call(DEDUCTIBLE)))
+    wired(judge(three_passage_script()))
+    main([str(path)])
+    capsys.readouterr()
+
+    exit_code = main([str(path), "--explain", "q001"])
+
+    assert exit_code == 0
+    assert re.search(r'3\. +useful +tool "', capsys.readouterr().out)
