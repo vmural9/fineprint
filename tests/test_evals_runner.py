@@ -448,6 +448,7 @@ def wired(monkeypatch):
     sink = RecordingSink()
     tracer = Tracer(sink)
     answer_arguments: list[dict] = []
+    retriever_tracers: list[Tracer | None] = []
 
     def wire(items, retriever, answer_fn=None):
         seen_settings: list[Settings] = []
@@ -464,7 +465,7 @@ def wired(monkeypatch):
 
         def fake_build_retriever(settings, pool, built_tracer=None):
             seen_settings.append(settings)
-            assert built_tracer is tracer, "the retriever shares the run's tracer"
+            retriever_tracers.append(built_tracer)
             return retriever
 
         monkeypatch.setattr("evals.run_golden_set.load_golden_set", lambda path: items)
@@ -482,6 +483,7 @@ def wired(monkeypatch):
     wire.sink = sink
     wire.tracer = tracer
     wire.answer_arguments = answer_arguments
+    wire.retriever_tracers = retriever_tracers
     return wire
 
 
@@ -838,6 +840,15 @@ def test_a_langfuse_run_records_the_provider_and_where_the_traces_went(
     assert config["tracing"] == "langfuse"
     assert config["langfuse_base_url"] == "https://langfuse.example"
     assert "sk-test" not in written.read_text(encoding="utf-8")
+
+
+def test_the_command_hands_the_tracer_to_the_retriever(wired, tmp_path):
+    items = [golden("q001")]
+    wired(items, FakeRetriever({items[0].question: ON_PAGE_23}))
+
+    main(["--config", "sections", "--retrieval-only", "--results-dir", str(tmp_path)])
+
+    assert wired.retriever_tracers == [wired.tracer]
 
 
 def test_the_command_hands_the_tracer_to_the_answer_function(wired, tmp_path):
@@ -1342,3 +1353,38 @@ def test_the_command_exits_1_and_says_why_when_a_rerank_failed(wired, tmp_path, 
     assert "re-rank skipped: q001" in captured.out
     assert "re-rank failed" in captured.err
     assert len(list(tmp_path.glob("*.json"))) == 1, "the file is written all the same"
+
+
+# --- the paid answers are saved before the tracer is closed --------------------------
+
+
+class SinkThatChecksTheFile(RecordingSink):
+    """Notes whether the results file was already on disk when the tracer was flushed and closed."""
+
+    def __init__(self, directory) -> None:
+        super().__init__()
+        self.directory = directory
+        self.files_at_flush: list[int] = []
+        self.files_at_shutdown: list[int] = []
+
+    def flush(self) -> None:
+        self.files_at_flush.append(len(list(self.directory.glob("*.json"))))
+        super().flush()
+
+    def shutdown(self) -> None:
+        self.files_at_shutdown.append(len(list(self.directory.glob("*.json"))))
+        super().shutdown()
+
+
+def test_the_results_file_is_written_before_the_tracer_is_flushed_and_shut_down(
+    wired, tmp_path, monkeypatch
+):
+    sink = SinkThatChecksTheFile(tmp_path)
+    items = [golden("q001")]
+    wired(items, FakeRetriever({items[0].question: ON_PAGE_23}), answer_fn=lambda q, c: answered(q))
+    monkeypatch.setattr("evals.run_golden_set.get_tracer", lambda settings: Tracer(sink))
+
+    exit_code = main(["--config", "sections", "--results-dir", str(tmp_path)])
+
+    assert exit_code == 0
+    assert sink.files_at_flush == [1] and sink.files_at_shutdown == [1]
