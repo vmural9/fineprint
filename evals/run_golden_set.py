@@ -524,90 +524,93 @@ def main(argv: Sequence[str] | None = None) -> int:
     today = run_date()
     tracer = get_tracer(settings)
     try:
-        with connection_pool(settings.database_url) as pool:
-            corpus = corpus_from_database(pool, settings.corpus_edition)
-            retriever = build_retriever(settings, pool, tracer)
-            answer_fn = (
-                None
-                if args.retrieval_only
-                else build_answer_function(
-                    settings, retriever, tools=eval_config.tools, today=today, tracer=tracer
+        try:
+            with connection_pool(settings.database_url) as pool:
+                corpus = corpus_from_database(pool, settings.corpus_edition)
+                retriever = build_retriever(settings, pool, tracer)
+                answer_fn = (
+                    None
+                    if args.retrieval_only
+                    else build_answer_function(
+                        settings, retriever, tools=eval_config.tools, today=today, tracer=tracer
+                    )
                 )
+                rows = run_questions(
+                    items,
+                    retriever,
+                    answer_fn,
+                    mode=mode,
+                    top_k=settings.retrieval_top_k,
+                    tracer=tracer,
+                    run_id=run_id,
+                    config_name=args.config,
+                )
+        except RunError as error:
+            print(f"ERROR: {error}", file=sys.stderr)
+            return EXIT_FAILED
+        except (psycopg.Error, PoolTimeout) as error:
+            # The database being down or unprepared is an ordinary mistake, not a crash: say which
+            # command fixes it instead of printing a traceback.
+            print(
+                f"ERROR: cannot query {describe_database(settings.database_url)}: "
+                f"{str(error).splitlines()[0]}\n"
+                "Start it with: docker compose up -d --wait, then: fineprint init-db && "
+                "fineprint ingest",
+                file=sys.stderr,
             )
-            rows = run_questions(
-                items,
-                retriever,
-                answer_fn,
+            return EXIT_FAILED
+
+        answering = not args.retrieval_only
+        result = RunResult(
+            run_id=run_id,
+            created_at=now_utc(),
+            git=git_state(),
+            config=RunConfig(
+                name=args.config,
                 mode=mode,
+                chunk_set=settings.chunk_set,
                 top_k=settings.retrieval_top_k,
-                tracer=tracer,
-                run_id=run_id,
-                config_name=args.config,
-            )
-    except RunError as error:
-        print(f"ERROR: {error}", file=sys.stderr)
-        return EXIT_FAILED
-    except (psycopg.Error, PoolTimeout) as error:
-        # The database being down or unprepared is an ordinary mistake, not a crash: say which
-        # command fixes it instead of printing a traceback.
-        print(
-            f"ERROR: cannot query {describe_database(settings.database_url)}: "
-            f"{str(error).splitlines()[0]}\n"
-            "Start it with: docker compose up -d --wait, then: fineprint init-db && "
-            "fineprint ingest",
-            file=sys.stderr,
+                candidates=settings.retrieval_candidates,
+                rrf_k=settings.rrf_k,
+                embedding_model=settings.embedding_model,
+                llm_model=settings.llm_model if answering else None,
+                reranker=eval_config.reranker,
+                rerank_candidates=settings.rerank_candidates if eval_config.reranker else None,
+                tools=eval_config.tools,
+                tools_today=today.isoformat() if eval_config.tools else None,
+                agent_max_tool_turns=settings.agent_max_tool_turns if eval_config.tools else None,
+                fallback_model=(settings.fallback_llm_model or None) if answering else None,
+                tracing=settings.tracing_provider,
+                langfuse_base_url=(
+                    settings.langfuse_base_url if settings.tracing_provider == "langfuse" else None
+                ),
+                only=only,
+            ),
+            corpus=corpus,
+            golden_set=GoldenSetInfo(sha256=sha256_of(DEFAULT_GOLDEN_SET), count=golden_count),
+            questions=rows,
         )
-        return EXIT_FAILED
+        path = save(result, results_path(result.run_id, args.results_dir))
+
+        print()
+        for line in summary_lines(result):
+            print(line)
+        print(f"\nwrote {path}")
+        if not args.retrieval_only:
+            print(f"next: python -m evals.review {path}")
+        if skipped_rerank_questions(result):
+            print(
+                "ERROR: a re-rank failed on at least one question, so those were answered from the "
+                "fused order and this row would not measure the re-ranker. Run it again.",
+                file=sys.stderr,
+            )
+            return EXIT_FAILED
+        return EXIT_FAILED if result.errors else EXIT_OK
     finally:
+        # Closed last, with the results file already written, so a flush to the tracing service
+        # that hangs or fails cannot cost the answers that were paid for.
         tracer.flush()
         tracer.shutdown()
-
-    answering = not args.retrieval_only
-    result = RunResult(
-        run_id=run_id,
-        created_at=now_utc(),
-        git=git_state(),
-        config=RunConfig(
-            name=args.config,
-            mode=mode,
-            chunk_set=settings.chunk_set,
-            top_k=settings.retrieval_top_k,
-            candidates=settings.retrieval_candidates,
-            rrf_k=settings.rrf_k,
-            embedding_model=settings.embedding_model,
-            llm_model=settings.llm_model if answering else None,
-            reranker=eval_config.reranker,
-            rerank_candidates=settings.rerank_candidates if eval_config.reranker else None,
-            tools=eval_config.tools,
-            tools_today=today.isoformat() if eval_config.tools else None,
-            agent_max_tool_turns=settings.agent_max_tool_turns if eval_config.tools else None,
-            fallback_model=(settings.fallback_llm_model or None) if answering else None,
-            tracing=settings.tracing_provider,
-            langfuse_base_url=(
-                settings.langfuse_base_url if settings.tracing_provider == "langfuse" else None
-            ),
-            only=only,
-        ),
-        corpus=corpus,
-        golden_set=GoldenSetInfo(sha256=sha256_of(DEFAULT_GOLDEN_SET), count=golden_count),
-        questions=rows,
-    )
-    path = save(result, results_path(result.run_id, args.results_dir))
-
-    print()
-    for line in summary_lines(result):
-        print(line)
-    print(f"\nwrote {path}")
-    if not args.retrieval_only:
-        print(f"next: python -m evals.review {path}")
-    if skipped_rerank_questions(result):
-        print(
-            "ERROR: a re-rank failed on at least one question, so those were answered from the "
-            "fused order and this row would not measure the re-ranker. Run it again.",
-            file=sys.stderr,
-        )
-        return EXIT_FAILED
-    return EXIT_FAILED if result.errors else EXIT_OK
 
 
 if __name__ == "__main__":
