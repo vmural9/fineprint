@@ -23,17 +23,21 @@ code that produced them.
 
 ## Status
 
-**Parts 1 and 2 are built and merged.** Part 1 built the service — ingestion, hybrid retrieval,
+**Parts 1, 2 and 3 are built and merged.** Part 1 built the service — ingestion, hybrid retrieval,
 cited answers, the HTTP API and the `fineprint` command — with a golden set of 40 audited questions
 and the eval tooling. Part 2 added a structure-aware chunker, a re-ranker and the four RAGAS
-metrics, and ran six configurations over the golden set, each with answers and judge scores; their
-results files are committed, and every row of the scoreboard below comes from them. The part 2
-write-up, which judges the hypotheses committed before those runs against the numbers, is under
-[Part 2](#part-2--retrieval-quality).
+metrics, and ran six configurations over the golden set, each with answers and judge scores. Part 3
+added tracing of every model and tool call, timeouts, retries and a fallback model, a two-tool
+agent, and the cost and p95 latency columns; it re-ran `sections` and `sections+rerank` with
+tracing on and ran the new `agent` configuration. The results files are committed, and every row of
+the scoreboard below comes from them. The write-ups, which judge the hypotheses committed before
+those runs against the numbers, are under [Part 2](#part-2--retrieval-quality) and
+[Part 3](#part-3--observability-and-agent).
 
 The `hybrid` answers are graded: I reviewed all 40 with `python -m evals.review`, and the
-scoreboard's **Manual pass** column comes from those verdicts. Neither walkthrough video is linked
-here yet, and until each one is, there is no `part-1` or `part-2` tag.
+scoreboard's **Manual pass** column comes from those verdicts. I reviewed all 40 `agent` answers
+the same way. Neither walkthrough video of parts 1 and 2 is linked here yet, and until each one is,
+there is no `part-1` or `part-2` tag.
 
 ## The series
 
@@ -41,7 +45,7 @@ here yet, and until each one is, there is no `part-1` or `part-2` tag.
 |------|--------------|--------|
 | 1. RAG service | Ingestion into Postgres with pgvector, hybrid retrieval with reciprocal rank fusion, FastAPI `/ask` and `/search`, structured answers with cited pages, golden set v1, the first scoreboard | built; video link outstanding |
 | 2. Retrieval quality | The four RAGAS metrics on the golden set, implemented from their definitions with Claude Sonnet 5 as judge; fixed-size against structure-aware chunking, each with and without a Cohere Rerank 3.5 re-ranker on Bedrock, side by side; hypotheses committed before the runs | built; video link outstanding |
-| 3. Observability and agent | Langfuse tracing on every LLM and tool call; a two-tool agent over the retriever; provider retries, timeouts and fallback; cost and p95 latency | planned |
+| 3. Observability and agent | Langfuse tracing on every LLM and tool call; a two-tool agent over the retriever; provider timeouts, retries and a fallback model; cost and p95 latency; hypotheses committed before the runs | built |
 | 4. Eval gate | Calibrated LLM-as-judge rubric, an adversarial slice, deterministic tool-call assertions, promptfoo in GitHub Actions with pass/fail thresholds | planned |
 | 5. Online evaluation (optional) | Scoring on sampled live traffic with alerts on score drops | planned |
 
@@ -131,7 +135,8 @@ programs — the runner, the manual review tool, and the scoreboard generator th
 ```
 
 There is no ORM and no RAG framework anywhere in `src/fineprint/`: plain Python, plain SQL, and one
-thin provider abstraction so part 3 can add retries and a second provider without touching the rest.
+thin provider abstraction, which is where part 3 added timeouts, retries and a fallback to a second
+model on the same provider.
 
 ### Run it end to end
 
@@ -579,6 +584,290 @@ same: 6 lifted, and one question newly hit, `q021`. The table is computed from e
 5, so it cannot see a page the re-ranker pushed out; comparing each re-ranked row with its
 un-re-ranked twin can, and neither re-ranked row lost a page its twin had.
 
+## Part 3 — observability and agent
+
+### What was built
+
+Parts 1 and 2 made the service answer and measured how well. Neither recorded what happens inside
+one request: which calls it made, how long each took, what each cost, and what the service did
+when a call failed. Part 3 adds that, and then puts a small agent on top of the retriever, so that
+the figures a question needs are looked up rather than remembered.
+
+**Tracing.** A *trace* is the record of one request, made of *spans*, one per call that matters.
+The service traces every model call (the answer, each embedding, each re-rank, each turn of the
+agent) and every tool call, and for each it keeps the tokens used, the cost at list prices, and the
+time it took. Spans nest the way the calls do:
+
+```
+agent                          one question
+├─ search                      the retriever
+│   ├─ embed_query             Titan: tokens, cost
+│   └─ rerank                  Cohere Rerank 3.5: search units, cost
+└─ tools                       the agent's turns
+    ├─ turn                    Claude Opus 5: tokens, cost; asks for tools
+    ├─ lookup_cost_figure      local code: arguments, result, time
+    ├─ lookup_cost_figure
+    └─ turn                    Claude Opus 5: the call that records the answer
+```
+
+A question asked through `/ask`, `/agent` or `/search`, or through the `fineprint` command, opens
+one such trace. In an eval run each of the 40 questions is a trace, tagged `eval` and with the
+configuration's name, and a run's 40 traces are grouped under the run's id. The same spans are
+always kept in the process as a record of the question (`TraceRecord` in
+`src/fineprint/tracing.py`), whether or not anything is sent anywhere, so cost and latency never
+depend on a call to Langfuse. An eval run writes that record into its results file beside each
+question, and the scoreboard's cost and latency columns are computed from it. `fineprint ask`
+and `fineprint agent` print what the question cost, and `/ask` and `/agent` return the trace's id
+and cost.
+
+Cost is worked out when a call returns, from the tokens it used (or, for the re-ranker, its
+search units) and the AWS list price in `us-west-2`. `src/fineprint/pricing.py` holds each price,
+the AWS price list it was read from and the date. Langfuse's own price table is not used. A call
+whose price is not in that table has no cost, and a trace containing one has no cost either; an
+unknown amount is never added up as zero.
+
+**Turning tracing on.** `TRACING_PROVIDER=none` is the default: nothing leaves the process, and
+cost and latency are still measured. To send traces to Langfuse, set `TRACING_PROVIDER=langfuse`
+and the three values from a Langfuse project's settings page in `.env`: `LANGFUSE_PUBLIC_KEY`,
+`LANGFUSE_SECRET_KEY` and `LANGFUSE_BASE_URL`, the region URL. `Settings` refuses to build with
+`langfuse` and any of the three missing, and `GET /healthz` says which mode the service is in. I
+used Langfuse Cloud on its free Hobby plan; the traces hold handbook text and golden-set questions
+and nothing private. `langfuse` is imported in one module of the service only,
+`src/fineprint/langfuse_sink.py`, which turns the service's spans into Langfuse observations;
+everything else talks to a small `Sink` interface, so the tests use a recording stand-in and a
+plain `pytest` never reaches the network.
+
+**Retries, timeouts and fallback.** Every model call has an explicit timeout and a bounded number
+of retries, all settings in `.env`:
+
+| Call | Timeout | Retries | When it still fails |
+|------|---------|---------|---------------------|
+| Answer model, Claude Opus 5 | `LLM_TIMEOUT_SECONDS=60` per request | `LLM_MAX_RETRIES=4`, the SDK's, for throttling and server errors | Falls back to Claude Sonnet 5 on Bedrock (`FALLBACK_LLM_MODEL`), only when the failure is a timeout or the model being unavailable. The answer says it came from the fallback and names the model. A refusal, a cut-off reply, a malformed tool call or a 4xx other than 429 does not fall back: it would happen again. |
+| Embedder, Titan | `AWS_TIMEOUT_SECONDS=10` read, 5 connect | `AWS_MAX_ATTEMPTS=4`, botocore's standard mode, first try included | No fallback, by construction: another embedding model would not match the stored vectors. The request fails, and the API answers 503. |
+| Re-ranker, Cohere Rerank 3.5 | `AWS_TIMEOUT_SECONDS=10` read, 5 connect | `AWS_MAX_ATTEMPTS=4` | Degrades: the fused order is used and the response says it was not re-ranked. |
+| The two tools | none; local code | none | The error goes back to the model as the tool's result, and the trace records it. |
+
+With the defaults, the slowest path to the fallback is five requests of up to 60 seconds each
+(1 + 4). There is no circuit breaker: the fallback is per call, and the next call tries the
+primary again, which is all that "recover" means here.
+
+`FAULT_INJECTION` makes a call fail on purpose so that this behaviour can be shown and tested. It
+takes `<target>:<fault>` or `<target>:<fault>:once`, with target `chat`, `embedding` or `rerank` and
+fault `unavailable` or `timeout`; `chat:unavailable:once` makes the first answer fall back and the
+next one go to Opus again. It raises the same errors the Bedrock classes do, before the real model
+is called, so nothing is billed, and the failure appears in the trace like a real one. It is empty
+by default, and `evals.run_golden_set` refuses to start while it is set, because a measured run
+must not have injected faults in it.
+
+**The agent.** `answer_question` hands the model the retrieved passages and takes one answer back.
+That is enough when the answer is a sentence the handbook prints. It is not enough when the answer
+has to be worked out, and a model doing arithmetic in its head, or remembering last year's amount,
+writes a figure that looks right and is not. So `answer_with_tools` (in `src/fineprint/agent.py`;
+the `fineprint agent` command, `POST /agent` and the `agent` configuration all call it) gives
+Claude Opus 5 the same retrieved passages and two tools, both plain Python that calls no model, no
+network and no database:
+
+- **`lookup_cost_figure`** returns one of the 2026 dollar amounts the handbook prints, with the
+  page and the sentence it comes from. The table holds eleven amounts (the Part B premium and
+  deductible, the Part A deductible and hospital coinsurance, the Part D out-of-pocket cap, and so
+  on), each copied from the pinned printing. The tool's argument is a fixed list of those figures,
+  so the model cannot ask for an amount the handbook does not print.
+  *Example, q023: "Dad has been an inpatient in the hospital for 80 days straight in the same
+  benefit period. What is he paying per day now, and what happens if he's still there past 90
+  days?"* The agent made two calls, `part_a_coinsurance_days_61_90` and
+  `part_a_coinsurance_lifetime_reserve_days`, and got back "$434 per day, page 27, *Days 61–90: You
+  pay $434 each day*" and "$868 per day, page 27". Its answer says that day 80 falls in days
+  61–90, so $434 each day; that days 91–150 cost $868 each day while he uses his 60 lifetime
+  reserve days; and that after day 150 he pays all costs.
+- **`check_enrollment_window`** works out, from a birth date and a reference date, when the
+  Initial Enrollment Period starts and ends and when coverage would begin, using the rules on
+  pages 17 and 18 and nothing else. The reference date is `as_of`; when the model leaves it out
+  it is the service's own date, and the eval runner pins it to the run date and records it in the
+  results file, so a run can be repeated.
+  *Example, q006: "My mom turns 65 on March 12. When can she sign up for Medicare without paying a
+  penalty, and when would her coverage start?"* The question gives no year. The agent first tried
+  a birth year of 1961, saw from the result that the window had already closed, and tried 1962.
+  Its answer gives the Initial Enrollment Period as December 1, 2026 through June 30, 2027 (page
+  17), with coverage starting March 1, 2027 for anyone who signs up from December to February, and
+  on the first day of the month after sign-up for March to June.
+
+Every turn the model must call at least one tool (`tool_choice` is `any`): one of the two, or
+`record_answer`, the same validated call part 1 uses to return an answer. It may call several at
+once. After `AGENT_MAX_TOOL_TURNS=4` turns of tool calls, the next turn has to be `record_answer`.
+The answer is then checked exactly as `ask` checks it: a citation to a passage the model was not
+given is dropped, and the pages come from the database. Every tool call, with its arguments and
+result, is stored with the answer, so part 4 can assert on it. The scoring pass adds each tool
+result, exactly as the model received it, to the passages that context recall, context precision
+and faithfulness read.
+
+**The `agent` row.** The `agent` configuration is the part 2 winner, the `sections` chunk set with
+the Cohere re-ranker, plus the two tools. Its retrieval is identical to `sections+rerank`'s, so
+any difference between the two rows comes from the tools.
+
+**Two new columns.** *Cost per query* is the mean, over all 40 questions of the run, of the trace's
+cost at list prices; the six questions the handbook does not answer are included, because they cost
+money too. The judge's calls in the scoring pass are not included: they are evaluation cost, not
+serving cost. *p95 latency* is the nearest-rank 95th percentile of each question's wall time,
+which for 40 questions is the 38th when they are sorted from fastest to slowest. Both are `—`
+unless every question of the run has a trace with a cost. Latency is measured on one machine on
+one day, so it compares the rows of one scoreboard and nothing more. `evals/scoreboard.md` adds
+three tables that split the numbers: cost and latency per row, with the generations per query and
+the number of fallbacks and skipped re-ranks; the time of each step (retriever, generation,
+tools); and which questions called which tool.
+
+**Checking the file against Langfuse.** `python -m evals.traces verify <results file>` reads each
+question's trace back from Langfuse and compares it with what the results file stores: input and
+output tokens must match exactly, and the cost within a ten-thousandth of a dollar. A trace that
+is missing or does not match yet is asked for again for up to 30 seconds, since Langfuse takes a
+few seconds to ingest a trace. It calls Langfuse only, never Bedrock.
+
+**Hypotheses, committed first.** As in part 2, I wrote down four predictions before any part 3 run
+and committed them as the part 3 section of `evals/HYPOTHESES.md`. They name the questions I
+expected to call tools, so they can fail in public. The findings below judge each one.
+
+### Run it end to end
+
+Part 3 runs on part 2's setup: the same three Bedrock models and the judge, and `AWS_PROFILE`
+exported in the shell, not set in `.env`. Sending traces to Langfuse needs a project's three values
+in `.env`, as described above; everything below also works with `TRACING_PROVIDER=none`, except
+`verify`, which then has nothing to compare.
+
+```bash
+export AWS_PROFILE=your-bedrock-profile          # boto3 reads this from the environment, not .env
+
+# One question, each way. Both call Bedrock and print the answer and what it cost, and, when
+# tracing to Langfuse, the trace's id and link. `agent` also prints every tool call first.
+uv run fineprint ask "Dad has been an inpatient in the hospital for 80 days straight in the same benefit period. What is he paying per day now, and what happens if he's still there past 90 days?"
+uv run fineprint agent "Dad has been an inpatient in the hospital for 80 days straight in the same benefit period. What is he paying per day now, and what happens if he's still there past 90 days?"
+uv run fineprint agent --as-of 2026-10-23 "My mom turns 65 on March 12. When can she sign up for Medicare without paying a penalty, and when would her coverage start?"
+
+# The same over HTTP; POST /agent takes the question, top_k and as_of.
+uv run fineprint serve
+curl -s localhost:8000/agent -H 'content-type: application/json' \
+  -d '{"question": "What does Part A cost me for day 80 of a hospital stay?"}'   # second terminal
+
+# A failure on purpose: the first answer falls back to Sonnet 5 and says so, the next does not.
+FAULT_INJECTION=chat:unavailable:once uv run fineprint serve
+
+# Two questions of the agent run, written to a scratch directory. --only needs a --results-dir
+# other than the default, and such a file never becomes a scoreboard row.
+uv run python -m evals.run_golden_set --config agent --only q001,q006 --results-dir /tmp/fineprint-smoke
+
+# The real run, then the judge's pass, the check against Langfuse, and the scoreboard.
+TRACING_PROVIDER=langfuse uv run python -m evals.run_golden_set --config agent
+uv run python -m evals.score evals/results/<run_id>.json
+uv run python -m evals.traces verify evals/results/<run_id>.json
+uv run python -m evals.scoreboard
+
+# Read only: the judge's stored working behind one question, and the hand review of a run.
+uv run python -m evals.score evals/results/20261023T123658Z_agent.json --explain q029
+uv run python -m evals.review evals/results/<run_id>.json
+```
+
+These call Bedrock: `ask`, `agent`, a request to `/ask` or `/agent` (and to `/search` in any mode
+but `lexical`), every `run_golden_set` run, and `evals.score` on a file that has unscored
+questions. `evals.traces verify` calls Langfuse and nothing else. `--explain` on a question the
+file has already scored, `evals.review` and `evals.scoreboard` read files and call nothing. A full
+`agent` run is 40 questions through the answer model with up to four tool turns each, plus the
+scoring pass, so it costs real money; 40 × the row's cost per query is the serving part. The three
+traced runs of this part are the `sections`, `sections+rerank` and `agent` rows.
+
+### Findings
+
+Every aggregate below is quoted from the generated block above or from the detail tables in
+`evals/scoreboard.md`, and every per-question fact comes from the results files in `evals/results/`.
+The scoreboard shows the latest run of each configuration, so its `sections`, `sections+rerank` and
+`agent` rows are the three traced runs, `20261023T122309Z_sections`,
+`20261023T122954Z_sections+rerank` and `20261023T123658Z_agent`.
+
+**H1 — where the time goes.** Predicted: on `sections+rerank`, model generation is more than 80% of
+a question's time at the median, and the retriever step (embedding, search and re-rank together) is
+under 2 seconds at p95. **Held.** Generation's median share is 89.7%, and the retriever's p95 is
+1.3 s (its p50 is 1.0 s). Without the re-ranker, on `sections`, the retriever is 0.4 s at p50 and
+0.5 s at p95 and generation's share is 96.0%; the difference between the two rows is the re-rank.
+On the `agent` row the tools take 0.0 s at p50 and at p95, as they should, being local Python.
+Its extra time is in generation, 11.1 s at p50 against 9.1 s, and generation's median share is
+90.7%.
+
+**H2 — which questions call tools.** Predicted: `lookup_cost_figure` on the eight questions whose
+expected answer states an amount the figure table holds (q001, q002, q011, q013, q014, q023, q035,
+q038), `check_enrollment_window` on the two that work dates out from a birthday (q006, q008), and
+no tool on the six questions the handbook does not answer (q003, q012, q026, q033, q037, q040).
+**Partly held.** The first two predictions held: all eight called `lookup_cost_figure`, and both
+called `check_enrollment_window`. The third did not: two of the six, q026 and q037, called
+`lookup_cost_figure`, and the other four called nothing. The agent also used the tools on questions
+the hypothesis did not name: `lookup_cost_figure` on eleven outside the eight (q004, q009, q010,
+q016, q017, q019, q020, q022, q024, and the unanswerable q026 and q037), and
+`check_enrollment_window` on q027 and q028. Of the 40 questions, 19 called `lookup_cost_figure`, 4
+called `check_enrollment_window` and 17 called neither. Neither tool returned an error. The two
+unanswerable questions that looked up figures went differently:
+
+- On q026, the hernia repair ("Exactly how many dollars will he owe for it?"), the answer says the
+  handbook gives no dollar figure for a specific procedure, then states the general rule with the
+  Part B deductible, $283, and the Part A hospital stay deductible, $1,736, which, in most cases, the hospital's
+  copayment cannot exceed (both from the tool), and points to Medicare.gov/procedure-price-lookup,
+  as the golden set's expected answer does. It sets `found_in_handbook` to true, though, so the
+  abstention metric counts it as an answer. It is the one miss behind the `agent` row's abstention
+  accuracy of 97.5% against `sections+rerank`'s 100.0%, and it passed my review.
+- On q037, the largest deductible a drug plan may charge, the answer says the excerpts do not give
+  one and sets the flag to false. It mentions the $2,100 the tool returned only to say that it is
+  the yearly out-of-pocket cap, a different thing.
+
+**H3 — what the tools cost.** Predicted: the `agent` row's cost per query and its p95 latency are
+each at least 1.5 times `sections+rerank`'s, and its page hit@5 is the same. **Partly held.** Cost
+per query is $0.0793 against $0.0494, 1.6 times (0.0793 / 0.0494), so that part is met; the agent
+makes 1.60 answer-model calls per question on average, against 1.00. The p95 latency is 15.9 s
+against 13.6 s, about 1.2 times (15.9 / 13.6), so that part is not. The median went from 10.2 s to
+12.3 s and the slowest question from 13.9 s to 17.1 s. Page hit@5 is 100.0% on both, as it has to
+be with identical retrieval. One more line of the same table needs explaining: `sections`, with no
+re-ranker, costs more per query, $0.0515, than `sections+rerank`, $0.0494, though the re-rank is an
+extra paid call. The answer call's input tokens, averaged over each results file, are higher on
+`sections`, and more than make up for the re-rank's price.
+
+**H4 — faithfulness.** Predicted: the `agent` row's faithfulness is at or above `sections+rerank`'s,
+because the figures it states come from a checked table and each tool result is scored as context.
+**Not held, narrowly.** It is 0.96 against 0.97, a difference of one hundredth on a metric that is
+a judge's estimate. By question type the agent is higher on `table` questions (0.98 against 0.97)
+and lower on `lookup` (0.96 against 0.97) and `multi_section` (0.94 against 0.98). To see what was
+counted unsupported I read the working behind the agent's three lowest scores with `--explain`:
+q029 (0.80), q016 (0.86) and q013 (0.88). None of the unsupported claims is a figure, and the
+amounts these answers state were marked supported. They are of two kinds that part 2's findings
+already describe. Some are details of the asker's situation worked into the answer, which the
+claim check cannot see because it is shown the passages and the claims but not the question (on
+q016 that Dad's Part B started in January 2026, and on q013 that he was first eligible at 65).
+Others are a plain-language gloss the passages do not spell out ("at least as good as Medicare's"
+for creditable drug coverage); and on q029 a start date worded for Medicare Advantage plans was
+applied to drug coverage. So the tools did not raise faithfulness here, because what lowers it is
+not a wrong figure.
+
+**The answers, by hand.** I reviewed all 40 `agent` answers with `python -m evals.review`: 97.5%
+pass (40 reviewed), and the one fail is q008. Its answer names the right month, July, for the last
+health savings account contribution, but dates the birthday and the enrollment period to 2026. The
+run's pinned date was October 23, 2026, after that year's August 14, so the next birthday is in
+2027. The cause is visible in the file: the question gives no birth year, the agent called the
+enrollment tool with 1961, the tool returned a window that ended in November 2026, and the answer
+was written from it. On q006, which has the same shape, the agent saw that the window had closed
+and tried again with 1962. The `hybrid` row's 85.0% is not a like-for-like comparison: that run
+used the other chunk set and no re-ranker.
+
+**What the traces showed about failures.** Each of the three runs had 0 fallbacks, and the two
+with a re-ranker had 0 skipped re-ranks. So the fallback and degraded paths are shown only by the
+tests and the `FAULT_INJECTION` switch, not by these runs, and nothing here measures how often
+Bedrock fails. `evals.traces verify` matched all 40 traces of each run, tokens exactly and cost
+within a ten-thousandth of a dollar, so the cost and latency columns agree with what Langfuse
+holds.
+
+**Part 2's rows were run again.** The part 2 `sections` and `sections+rerank` results predate
+tracing, so their cost and latency cells could only be filled by running them again with it on.
+Retrieval repeated: page hit@5 is 97.1% and 100.0% in both the old and the new runs. The
+answer-side scores moved by a hundredth or two, because the answers are written afresh and judged
+again. Computed the same way from the old and the new results files, the figures are, for
+`sections`, context recall 0.82 then 0.80, faithfulness 0.95 then 0.94 and answer relevance 0.55
+then 0.56, with context precision 0.74 both times; and for `sections+rerank`, context recall 0.94
+then 0.93 and answer relevance 0.58 then 0.57, with context precision 0.90 and faithfulness 0.97
+both times. The part 2 findings above quote the old runs and are not changed by this; the block
+above shows the new ones. I did not separate the answer model's variation from the judge's.
+
 ## The corpus
 
 "Medicare & You" is the handbook the Centers for Medicare & Medicaid Services mails to every
@@ -604,10 +893,12 @@ verifying the hash before it writes anything into place.
 ## Repo layout
 
 ```
-src/fineprint/                the service: config, db, schema.sql, pdf, chunking, providers,
-                              ingest, retrieval, answer, api, cli
+src/fineprint/                the service: config, db, schema.sql, pdf, chunking, providers
+                              (with fallback and fault injection), ingest, retrieval, answer,
+                              tracing, pricing, agent, tools, api, cli
 evals/                        golden set, configurations, metrics, runner, review tool, scoring
-                              pass, candidate diagnostic, scoreboard generator, HYPOTHESES.md
+                              pass, candidate diagnostic, trace check, scoreboard generator,
+                              HYPOTHESES.md
 evals/results/                one JSON file per eval run; the scoreboard reads these
 evals/results/candidates/     the candidate diagnostic's files, kept apart from the runs
 scripts/download_handbook.py  pinned, hash-verified handbook download
