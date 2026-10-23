@@ -5,14 +5,15 @@
 
 Golden set: 40 questions · Corpus: Medicare & You, 2026 edition, sha256 `d7a341bc3d2d`
 
-Generated at 2026-10-10 03:18 UTC.
+Generated at 2026-10-23 13:29 UTC.
 
 | Configuration | Page hit@5 | Manual pass | Context recall | Context precision | Faithfulness | Answer relevance | Cost per query | p95 latency | Judge pass | Adversarial pass |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | hybrid | 85.3% | 85.0% (40 reviewed) | 0.75 | 0.78 | 0.94 | 0.53 | — | — | — | — |
 | hybrid+rerank | 97.1% | — | 0.92 | 0.88 | 0.97 | 0.56 | — | — | — | — |
-| sections | 97.1% | — | 0.82 | 0.74 | 0.95 | 0.55 | — | — | — | — |
-| sections+rerank | 100.0% | — | 0.94 | 0.90 | 0.97 | 0.58 | — | — | — | — |
+| sections | 97.1% | — | 0.80 | 0.74 | 0.94 | 0.56 | $0.0515 | 13.0 s | — | — |
+| sections+rerank | 100.0% | — | 0.93 | 0.90 | 0.97 | 0.57 | $0.0494 | 13.6 s | — | — |
+| agent | 100.0% | — | 0.94 | 0.82 | 0.96 | 0.58 | $0.0793 | 15.9 s | — | — |
 | vector-only | 88.2% | — | 0.86 | 0.87 | 0.94 | 0.56 | — | — | — | — |
 | lexical-only | 67.6% | — | 0.56 | 0.57 | 0.91 | 0.43 | — | — | — | — |
 
@@ -28,6 +29,7 @@ Generated at 2026-10-10 03:18 UTC.
 | hybrid+rerank | 94.1% | 0.89 | 97.1% | 97.5% | 0 of 40 |
 | sections | 94.1% | 0.77 | 97.1% | 95.0% | 0 of 40 |
 | sections+rerank | 98.5% | 0.93 | 100.0% | 100.0% | 0 of 40 |
+| agent | 98.5% | 0.93 | 100.0% | 97.5% | 0 of 40 |
 | vector-only | 88.2% | 0.86 | 88.2% | 95.0% | 0 of 40 |
 | lexical-only | 63.2% | 0.56 | 67.6% | 72.5% | 0 of 40 |
 
@@ -41,6 +43,7 @@ Generated at 2026-10-10 03:18 UTC.
 | hybrid+rerank | 93.3% (15) | 100.0% (9) | 100.0% (10) |
 | sections | 93.3% (15) | 100.0% (9) | 100.0% (10) |
 | sections+rerank | 100.0% (15) | 100.0% (9) | 100.0% (10) |
+| agent | 100.0% (15) | 100.0% (9) | 100.0% (10) |
 | vector-only | 80.0% (15) | 88.9% (9) | 100.0% (10) |
 | lexical-only | 66.7% (15) | 66.7% (9) | 70.0% (10) |
 
@@ -54,6 +57,7 @@ Each cell is the share of that type's questions whose expected page was retrieve
 | hybrid+rerank | 93.3% (15) | 94.4% (9) | 95.0% (10) |
 | sections | 93.3% (15) | 100.0% (9) | 90.0% (10) |
 | sections+rerank | 100.0% (15) | 100.0% (9) | 95.0% (10) |
+| agent | 100.0% (15) | 100.0% (9) | 95.0% (10) |
 | vector-only | 80.0% (15) | 88.9% (9) | 100.0% (10) |
 | lexical-only | 66.7% (15) | 66.7% (9) | 55.0% (10) |
 
@@ -65,8 +69,9 @@ Each cell is the mean share of that type's questions' expected pages that were f
 | --- | --- | --- | --- |
 | hybrid | 0.68 (15) | 0.85 (9) | 0.77 (10) |
 | hybrid+rerank | 0.93 (15) | 0.97 (9) | 0.84 (10) |
-| sections | 0.81 (15) | 0.94 (9) | 0.72 (10) |
-| sections+rerank | 0.98 (15) | 0.97 (9) | 0.85 (10) |
+| sections | 0.81 (15) | 0.94 (9) | 0.67 (10) |
+| sections+rerank | 0.98 (15) | 0.94 (9) | 0.85 (10) |
+| agent | 0.98 (15) | 1.00 (9) | 0.82 (10) |
 | vector-only | 0.79 (15) | 0.88 (9) | 0.95 (10) |
 | lexical-only | 0.58 (15) | 0.71 (9) | 0.38 (10) |
 
@@ -78,8 +83,9 @@ Each cell is the mean share of the expected answer's sentences the retrieved pas
 | --- | --- | --- | --- |
 | hybrid | 0.90 (15) | 0.97 (9) | 0.98 (10) |
 | hybrid+rerank | 0.99 (15) | 0.94 (9) | 0.98 (10) |
-| sections | 0.93 (15) | 0.97 (9) | 0.95 (10) |
-| sections+rerank | 0.95 (15) | 1.00 (9) | 0.98 (10) |
+| sections | 0.92 (15) | 0.96 (9) | 0.96 (10) |
+| sections+rerank | 0.97 (15) | 0.97 (9) | 0.98 (10) |
+| agent | 0.96 (15) | 0.98 (9) | 0.94 (10) |
 | vector-only | 0.96 (15) | 0.92 (9) | 0.94 (10) |
 | lexical-only | 0.92 (14) | 0.90 (9) | 0.93 (9) |
 
@@ -91,8 +97,39 @@ Each cell is the mean share of the generated answer's own claims the retrieved p
 | --- | --- | --- | --- | --- |
 | hybrid+rerank | 10 | 23 | 1 | 34 |
 | sections+rerank | 6 | 28 | 0 | 34 |
+| agent | 6 | 28 | 0 | 34 |
 
 Only rows with a re-ranker are in this table. It is computed from the top 5 each run stored, checked against the golden set as it stands now, `alt_pages` included. For each answerable question it takes the first stored chunk covering an expected page or one of its `alt_pages` alternates: `fused_rank` > 5 means that chunk sat outside the top 5 before re-ranking and re-ranking lifted it in; `fused_rank` ≤ 5 means it was already there. *Lifted* counts that chunk, not its page: another chunk of the same page may already have been in the top 5 before re-ranking, so this column can be larger than the number of questions whose page the re-ranker newly brought into the top 5, which is what the rise in `page_hit@5` over the row's un-re-ranked twin (`hybrid` or `sections`) shows. A page the re-ranker pushed *out* of the top 5 cannot be seen from the stored top 5, so it never appears here — that loss is what a lower `page_hit@5` on this row than on its twin shows.
+
+### Cost and latency
+
+| Configuration | Mean cost | p50 latency | p95 latency | Max latency | Generations per query | Tool calls per query | Fallbacks | Re-ranks skipped |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| sections | $0.0515 | 9.9 s | 13.0 s | 15.6 s | 1.00 | 0.00 | 0 | — |
+| sections+rerank | $0.0494 | 10.2 s | 13.6 s | 13.9 s | 1.00 | 0.00 | 0 | 0 |
+| agent | $0.0793 | 12.3 s | 15.9 s | 17.1 s | 1.60 | 0.80 | 0 | 0 |
+
+Only rows with a trace stored for at least one question are in this table, and a cell is a dash unless every question of the run has a trace with a cost. Mean cost counts every question, unanswerable ones included. Latency is the wall time of the whole question, measured on one machine on one day. A generation is one call to the answer model, so a row that answers in a single call has 1.00; the agent's extra turns raise it. *Fallbacks* is the number of questions where any generation ran on the fallback model. *Re-ranks skipped* is the number of questions whose re-rank call failed, so their chunks stayed in the fused order; it is a dash for a row without a re-ranker.
+
+### Time by step
+
+| Configuration | Retriever p50 | Retriever p95 | Generation p50 | Generation p95 | Tools p50 | Tools p95 | Generation share (median) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| sections | 0.4 s | 0.5 s | 9.5 s | 12.7 s | — | — | 96.0% |
+| sections+rerank | 1.0 s | 1.3 s | 9.1 s | 12.1 s | — | — | 89.7% |
+| agent | 1.1 s | 1.3 s | 11.1 s | 14.4 s | 0.0 s | 0.0 s | 90.7% |
+
+Only rows with a trace stored for every question are in this table. *Retriever* is the search step, including the question's embedding and the re-rank; *Generation* is the sum of a question's calls to the answer model, the agent's turns included; *Tools* is the sum of its tool calls, a dash for a row without tools. Each is summed per question, then taken at the median (p50) and the 95th percentile (p95) over the run's questions by nearest rank. *Generation share* is the median, over the questions, of generation time divided by the question's whole time.
+
+### Tool calls
+
+| Configuration | Tool | Questions that called it | Which questions | Calls | Errors |
+| --- | --- | --- | --- | --- | --- |
+| agent | check_enrollment_window | 4 | q006, q008, q027, q028 | 5 | 0 |
+| agent | lookup_cost_figure | 19 | q001, q002, q004, q009, q010, q011, q013, q014, q016, q017, q019, q020, q022, q023, q024, q026, q035, q037, q038 | 27 | 0 |
+| agent | (neither tool) | 17 | q003, q005, q007, q012, q015, q018, q021, q025, q029, q030, q031, q032, q033, q034, q036, q039, q040 | — | — |
+
+Only rows that offered the model the two tools are in this table, counted from the tool calls in each question's trace. A call that errored is one the tool refused, for example for an argument it does not know. The last line of a row is the questions that called neither tool; a question without a trace is in no line.
 
 ### What produced each row
 
@@ -100,7 +137,8 @@ Only rows with a re-ranker are in this table. It is computed from the top 5 each
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | hybrid | hybrid | fixed-220w | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | — | us.anthropic.claude-sonnet-5 | — | 26561f9 (dirty) | 20260926T150426Z_hybrid |
 | hybrid+rerank | hybrid | fixed-220w | 5 | 20 | 60 | cohere.rerank-v3-5:0 | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | — | us.anthropic.claude-sonnet-5 | — | d59a1bc (dirty) | 20260928T041004Z_hybrid+rerank |
-| sections | hybrid | sections | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | — | us.anthropic.claude-sonnet-5 | — | d59a1bc (dirty) | 20260928T041711Z_sections |
-| sections+rerank | hybrid | sections | 5 | 20 | 60 | cohere.rerank-v3-5:0 | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | — | us.anthropic.claude-sonnet-5 | — | d59a1bc (dirty) | 20260928T042438Z_sections+rerank |
+| sections | hybrid | sections | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | us.anthropic.claude-sonnet-5 | us.anthropic.claude-sonnet-5 | langfuse | 787c162 | 20261023T122309Z_sections |
+| sections+rerank | hybrid | sections | 5 | 20 | 60 | cohere.rerank-v3-5:0 | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | us.anthropic.claude-sonnet-5 | us.anthropic.claude-sonnet-5 | langfuse | 787c162 (dirty) | 20261023T122954Z_sections+rerank |
+| agent | hybrid | sections | 5 | 20 | 60 | cohere.rerank-v3-5:0 | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | us.anthropic.claude-sonnet-5 | us.anthropic.claude-sonnet-5 | langfuse | 787c162 (dirty) | 20261023T123658Z_agent |
 | vector-only | vector | fixed-220w | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | — | us.anthropic.claude-sonnet-5 | — | d59a1bc (dirty) | 20260928T043127Z_vector-only |
 | lexical-only | lexical | fixed-220w | 5 | 20 | 60 | — | amazon.titan-embed-text-v2:0 | us.anthropic.claude-opus-5 | — | us.anthropic.claude-sonnet-5 | — | d59a1bc (dirty) | 20260928T043706Z_lexical-only |

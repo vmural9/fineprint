@@ -58,14 +58,15 @@ renders as `—`; it never carries a placeholder value.
 
 Golden set: 40 questions · Corpus: Medicare & You, 2026 edition, sha256 `d7a341bc3d2d`
 
-Generated at 2026-10-10 03:18 UTC.
+Generated at 2026-10-23 13:29 UTC.
 
 | Configuration | Page hit@5 | Manual pass | Context recall | Context precision | Faithfulness | Answer relevance | Cost per query | p95 latency | Judge pass | Adversarial pass |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | hybrid | 85.3% | 85.0% (40 reviewed) | 0.75 | 0.78 | 0.94 | 0.53 | — | — | — | — |
 | hybrid+rerank | 97.1% | — | 0.92 | 0.88 | 0.97 | 0.56 | — | — | — | — |
-| sections | 97.1% | — | 0.82 | 0.74 | 0.95 | 0.55 | — | — | — | — |
-| sections+rerank | 100.0% | — | 0.94 | 0.90 | 0.97 | 0.58 | — | — | — | — |
+| sections | 97.1% | — | 0.80 | 0.74 | 0.94 | 0.56 | $0.0515 | 13.0 s | — | — |
+| sections+rerank | 100.0% | — | 0.93 | 0.90 | 0.97 | 0.57 | $0.0494 | 13.6 s | — | — |
+| agent | 100.0% | — | 0.94 | 0.82 | 0.96 | 0.58 | $0.0793 | 15.9 s | — | — |
 | vector-only | 88.2% | — | 0.86 | 0.87 | 0.94 | 0.56 | — | — | — | — |
 | lexical-only | 67.6% | — | 0.56 | 0.57 | 0.91 | 0.43 | — | — | — | — |
 
