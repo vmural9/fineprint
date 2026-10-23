@@ -223,10 +223,10 @@
         "turns": 2
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "$202.90 standard premium and IRMAA above $109,000 single or $218,000 joint (page 23), with SSA.gov/medicare/lower-irmaa; adds the 10% Part B late-enrollment penalty.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:01Z"
       },
       "error": null,
       "scoring_detail": {
@@ -681,10 +681,10 @@
         "turns": 2
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "$1,736 deductible once (page 27), 10 SNF days at $217 (page 29) shown as $2,170, total $3,906; deductible not charged twice in one benefit period.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:01Z"
       },
       "error": null,
       "scoring_detail": {
@@ -1143,10 +1143,10 @@
         "turns": 1
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Says the 2026 limits are not in the handbook, prints the 2025 ones ($23,475/$17,600 single, $31,725/$35,130 married) and points to Medicare.gov (page 92).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:01Z"
       },
       "error": null,
       "scoring_detail": {
@@ -1411,10 +1411,10 @@
         "turns": 2
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "No to aids and fitting exams; covered diagnostic exams and the yearly audiologist visit at 20% with the $283 Part B deductible, as on page 42.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:01Z"
       },
       "error": null,
       "scoring_detail": {
@@ -1837,10 +1837,10 @@
         "turns": 1
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Medicare pays first with fewer than 20 employees; multi-employer exception stated (page 21).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:01Z"
       },
       "error": null,
       "scoring_detail": {
@@ -2307,10 +2307,10 @@
         "turns": 3
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "December through June with the first-of-month start rules of page 17; dates it to the March 2027 birthday, which is right as of today.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -2781,10 +2781,10 @@
         "turns": 1
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "8-month Special Enrollment Period from the month after employment or coverage ends; COBRA does not extend it and gives no new period when it ends (pages 17-18).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -3205,10 +3205,10 @@
         "turns": 2
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "fail",
+        "note": "Right month (July) but labels it July 2026 and gives an IEP of May 1 - Nov 30, 2026; asked on 2026-10-23 in future tense, the birthday is August 14, 2027, so both years are wrong.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -3651,10 +3651,10 @@
         "turns": 2
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "No yearly limit under Original Medicare alone; Medicare Advantage plans cap Part A and B costs, no dollar figure given (pages 11, 61).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -4112,10 +4112,10 @@
         "turns": 2
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Part B premium ($202.90, page 23) still due with a $0 plan; plan premium on top; Part B premium reduction noted (page 65); Part D IRMAA thresholds match page 82.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -4634,10 +4634,10 @@
         "turns": 2
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "$2,100 cap in 2026 for drugs the plan covers, what counts toward it, no cost sharing after it (page 83); Extra Help $5.10/$12.65 matches page 93.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -5065,10 +5065,10 @@
         "turns": 1
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Handbook does not list drugs; points to the plan's formulary, Medicare.gov/plan-compare, 1-800-MEDICARE and SHIP (page 85).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -5341,10 +5341,10 @@
         "turns": 2
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Penalty likely, permanent, Extra Help exempts, and the 1% x $38.99 x months formula with rounding (page 84); worked example 24 x $0.3899 = $9.36, rounded to $9.40, is correct.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -5822,10 +5822,10 @@
         "turns": 2
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Plan K $8,000 and Plan L $4,000 limits, 50%/75% shares, 100% Part A coinsurance, exclusions, $283 Part B deductible: matches page 76.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -6285,10 +6285,10 @@
         "turns": 1
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "6-month Medigap Open Enrollment Period, may not be able to buy or may pay more afterwards, guaranteed issue rights, Part B delay rule (page 77).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -6688,10 +6688,10 @@
         "turns": 2
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Not yet, the Welcome to Medicare visit instead, $0 for either with assignment, extras may bring coinsurance and the $283 deductible (pages 54-55).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -7149,10 +7149,10 @@
         "turns": 2
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "$0 for home health, 20% plus the $283 deductible for equipment, homebound defined without bedridden, 8 hours a day and 28 (or 35) hours a week (page 43).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -7597,10 +7597,10 @@
         "turns": 1
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Hospice doctor and own doctor certify 6 months or less, signed statement; nothing for hospice, up to $5 per prescription, 5% respite for up to 5 days, room and board rule (pages 26-27).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -8009,10 +8009,10 @@
         "turns": 2
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Rented, wheelchair becomes his after 13 months, 20% with the $283 Part B deductible, assignment for all rental months or pay upfront (page 40).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -8458,10 +8458,10 @@
         "turns": 2
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Covered for depression with the listed providers and telehealth, 20% with the $283 deductible, plus daily coinsurance in a hospital outpatient setting or community mental health center (page 46).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -8956,10 +8956,10 @@
         "turns": 1
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Puerto Rico counts as the U.S., Portugal generally not covered; names the ambulance exception at 20% and Medicare.gov/coverage/travel-outside-the-u.s. (page 53).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -9398,10 +9398,10 @@
         "turns": 2
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Observation is outpatient, so the 3-day inpatient rule is not met; MOON after 24 hours; ACO waiver and Medicare Advantage exceptions (pages 28-29).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -9935,10 +9935,10 @@
         "turns": 2
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "$434 a day for days 61-90, $868 for days 91-150 using the 60 lifetime reserve days, all costs after day 150 (page 27).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -10419,10 +10419,10 @@
         "turns": 2
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Both $311 and $565 given without guessing which applies, Part B required with bought Part A, 10% penalty for twice the missed years with the 2-for-4 example (page 22).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -10868,10 +10868,10 @@
         "turns": 1
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Medicare Savings Programs for premiums and Extra Help for drug costs, apply at SSA.gov/extrahelp; omits the four program names and the automatic Extra Help link (page 91 not retrieved).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -11336,10 +11336,10 @@
         "turns": 2
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Declines a dollar figure for the procedure, gives the general rule ($283 deductible, 20%, copay capped at the $1,736 Part A deductible) and names Medicare.gov/procedure-price-lookup (page 47); the found_in_handbook flag is wrong.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -11678,10 +11678,10 @@
         "turns": 2
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Open Enrollment October 15 to December 7, coverage January 1 if the plan has the request by December 7 (page 71); adds the Medicare Advantage Open Enrollment Period (page 72).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -12139,10 +12139,10 @@
         "turns": 2
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "General Enrollment Period January 1 to March 31, 2 months after adding Part B to join, coverage the first of the next month, both parts required (page 71).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -12542,10 +12542,10 @@
         "turns": 1
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Special Enrollment Period for a natural disaster (page 18), then 2 months to join a drug or Medicare Advantage plan, coverage the first of the next month (page 80).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -12904,10 +12904,10 @@
         "turns": 1
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Medicare Advantage Open Enrollment Period January 1 to March 31, one change only, options and automatic disenrollment match page 72.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -13323,10 +13323,10 @@
         "turns": 1
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Both halves answered: no referral or prior authorization in most cases under Original Medicare, may need both under Medicare Advantage (pages 11-12, 61, 63).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -13729,10 +13729,10 @@
         "turns": 1
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "HMO primary doctor and referrals in most cases, full cost out of network without authorization, HMOPOS; PPO no primary doctor, no referral, out of network at higher cost (pages 66-68).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -14123,10 +14123,10 @@
         "turns": 1
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Premium not in the handbook; explains $0 plans and premiums on top of Part B; points to Medicare.gov, 1-800-MEDICARE, the plan and SHIP.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -14362,10 +14362,10 @@
         "turns": 1
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Still owes Part D IRMAA above $109,000 or $218,000 even in a Medicare Advantage plan, paid to Medicare or the RRB and not the plan, separately from third-party premiums (page 82).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -14808,10 +14808,10 @@
         "turns": 2
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "$35 a month for each covered insulin and no deductible for insulin (page 88), plus supplies and the Part B pump rule.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -15218,10 +15218,10 @@
         "turns": 1
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Tiering exception for a lower copayment and the coverage determination right (pages 85, 99); omits the prescriber's statement and the fast-request option (page 100 not retrieved).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -15579,10 +15579,10 @@
         "turns": 2
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Says the maximum deductible is not given, separates the $2,100 out-of-pocket cap (page 83) from it, points to Medicare.gov/plan-compare, SHIP and 1-800-MEDICARE.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -15885,10 +15885,10 @@
         "turns": 2
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Plan N $20 and $50 copayments, high-deductible G $2,950 in 2026, neither covers the $283 Part B deductible: matches page 76.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -16376,10 +16376,10 @@
         "turns": 1
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "12-month trial right if the same insurer still sells it, state-law and January 1, 2020 fallback, no automatic cancellation, no Medigap for Medicare Advantage costs (page 78).",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
@@ -16801,10 +16801,10 @@
         "turns": 1
       },
       "review": {
-        "verdict": null,
-        "note": "",
-        "reviewer": null,
-        "reviewed_at": null
+        "verdict": "pass",
+        "note": "Premium not in the handbook; varies by company and age; points to Medicare.gov/medigap-supplemental-insurance-plans, the State Insurance Department, SHIP and an agent or broker.",
+        "reviewer": "saint",
+        "reviewed_at": "2026-10-23T13:42:02Z"
       },
       "error": null,
       "scoring_detail": {
